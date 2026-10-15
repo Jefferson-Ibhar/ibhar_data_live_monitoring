@@ -116,10 +116,11 @@
             valDayEst.textContent = `$${(Number(data.current_hourly_rate) * 24).toFixed(0)}`;
         }
 
-        // 2. Today's cost
-        const valToday = document.getElementById('val-today-cost');
-        if (valToday && data.today_cost !== undefined) {
-            valToday.textContent = Number(data.today_cost).toFixed(2);
+        // 2. Yesterday's cost
+        const valYesterday = document.getElementById('val-yesterday-cost') || document.getElementById('val-today-cost');
+        if (valYesterday) {
+            const cost = data.yesterday_cost !== undefined ? data.yesterday_cost : data.today_cost;
+            valYesterday.textContent = Number(cost || 0).toFixed(2);
         }
 
         // 3. MTD and budget

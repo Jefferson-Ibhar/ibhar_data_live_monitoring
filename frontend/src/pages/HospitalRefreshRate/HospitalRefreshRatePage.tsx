@@ -205,7 +205,7 @@ export const HospitalRefreshRatePage: React.FC = () => {
             <Sliders className="w-6 h-6 text-blue-600 dark:text-blue-400" />
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 font-sans mt-1">
-            Configure dynamic overall default conditions (30m, 60m, 90m) or customize per-hospital rules
+            Configure dynamic overall default conditions (30m, 60m, 90m, 180m, 270m) or customize per-hospital rules
           </p>
         </div>
 
@@ -292,6 +292,36 @@ export const HospitalRefreshRatePage: React.FC = () => {
             >
               90 / 120 Min
             </button>
+            <button
+              onClick={() => handleApplyGlobalPreset(90, 180, 'Cadence 90/180m')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+                globalThreshold.receivingMaxMinutes === 90 && globalThreshold.delayedMaxMinutes === 180
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-slate-700'
+              }`}
+            >
+              90 / 180 Min
+            </button>
+            <button
+              onClick={() => handleApplyGlobalPreset(90, 270, 'Wide Window 90/270m')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+                globalThreshold.receivingMaxMinutes === 90 && globalThreshold.delayedMaxMinutes === 270
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-400/30'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-slate-700'
+              }`}
+            >
+              90 / 270 Min
+            </button>
+            <button
+              onClick={() => handleApplyGlobalPreset(180, 270, 'Extended 180/270m')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+                globalThreshold.receivingMaxMinutes === 180 && globalThreshold.delayedMaxMinutes === 270
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-slate-700'
+              }`}
+            >
+              180 / 270 Min
+            </button>
           </div>
         </div>
 
@@ -317,7 +347,7 @@ export const HospitalRefreshRatePage: React.FC = () => {
                 <input
                   type="number"
                   min={1}
-                  max={300}
+                  max={1440}
                   value={globalThreshold.receivingMaxMinutes}
                   onChange={(e) => handleUpdateGlobalThreshold('receivingMaxMinutes', parseInt(e.target.value, 10) || 1)}
                   className="w-20 p-1.5 text-center font-mono font-black text-sm rounded-xl bg-slate-50 dark:bg-slate-900 border-2 border-emerald-400 dark:border-emerald-600 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -475,7 +505,7 @@ export const HospitalRefreshRatePage: React.FC = () => {
                         <input
                           type="number"
                           min={1}
-                          max={300}
+                          max={1440}
                           value={config.receivingMaxMinutes}
                           onChange={(e) => handleUpdateHospitalThreshold(h.id, 'receivingMaxMinutes', parseInt(e.target.value, 10) || 1)}
                           className="w-16 p-1 text-center font-mono font-black text-xs rounded-lg bg-white dark:bg-slate-800 border-2 border-emerald-300 dark:border-emerald-700 text-slate-900 dark:text-white focus:outline-none"

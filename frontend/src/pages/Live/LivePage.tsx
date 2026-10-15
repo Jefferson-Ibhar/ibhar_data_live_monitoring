@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useMonitoring } from '../../hooks/useMonitoring';
@@ -104,7 +104,7 @@ export const LivePage: React.FC = () => {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
   const [progress, setProgress] = useState<number>(0);
 
-  // 50s Page Auto-Swap states (between Live and AWS Costs)
+  // 70s Page Auto-Swap states (between Live and AWS Costs)
   const [isPageRotating, setIsPageRotating] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('ibhar_auto_page_rotate');
@@ -113,7 +113,7 @@ export const LivePage: React.FC = () => {
       return true;
     }
   });
-  const [pageTimeRemaining, setPageTimeRemaining] = useState<number>(50);
+  const [pageTimeRemaining, setPageTimeRemaining] = useState<number>(70);
 
   const togglePageRotate = () => {
     setIsPageRotating(prev => {
@@ -126,8 +126,38 @@ export const LivePage: React.FC = () => {
   };
 
   const ITEMS_PER_PAGE = 7;
-  const FLIP_INTERVAL_MS = 7000;
+  const FLIP_INTERVAL_MS = 10000;
   const PROGRESS_TICK_MS = 50;
+
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // By default, auto-position the page at the table toolbar so it aligns under the sticky header
+  useEffect(() => {
+    let timeoutId: any;
+    const scrollToTable = () => {
+      if (tableContainerRef.current) {
+        const headerEl = document.querySelector('header');
+        const headerHeight = headerEl ? headerEl.getBoundingClientRect().height : 72;
+        const rect = tableContainerRef.current.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const targetTop = rect.top + scrollTop - headerHeight - 8;
+
+        window.scrollTo({
+          top: Math.max(0, targetTop),
+          behavior: 'instant'
+        });
+      }
+    };
+
+    scrollToTable();
+    const frameId = requestAnimationFrame(scrollToTable);
+    timeoutId = setTimeout(scrollToTable, 80);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      clearTimeout(timeoutId);
+    };
+  }, []);
 
   // Extract logs from integrationHealthData
   const logs: IntegrationHealthLog[] = useMemo(() => {
@@ -338,13 +368,13 @@ export const LivePage: React.FC = () => {
     }
   }, [totalPages, currentPage]);
 
-  // 50-Second Page Transition Timer (Live -> AWS Costs)
+  // 70-Second Page Transition Timer (Live -> AWS Costs)
   useEffect(() => {
     if (!isPageRotating) return;
 
-    setPageTimeRemaining(50);
+    setPageTimeRemaining(70);
     const startMs = Date.now();
-    const durationMs = 50000;
+    const durationMs = 70000;
 
     const interval = setInterval(() => {
       const elapsed = Date.now() - startMs;
@@ -401,10 +431,10 @@ export const LivePage: React.FC = () => {
 
         {/* Action Controls */}
         <div className="flex items-center flex-wrap gap-2.5">
-          {/* 50s Auto Page Rotator (Live <-> AWS Cost) */}
+          {/* 70s Auto Page Rotator (Live <-> AWS Cost) */}
           <button
             onClick={togglePageRotate}
-            title={isPageRotating ? "Auto-transition active: Will switch to AWS Costs after 50s. Click to pause." : "Auto-transition paused. Click to resume."}
+            title={isPageRotating ? "Auto-transition active: Will switch to AWS Costs after 70s. Click to pause." : "Auto-transition paused. Click to resume."}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all cursor-pointer border-2 shadow-sm ${
               isPageRotating
                 ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 ring-2 ring-indigo-400/20'
@@ -425,10 +455,10 @@ export const LivePage: React.FC = () => {
             )}
           </button>
 
-          {/* Pause / Resume Auto-Flip (7s row table pagination) */}
+          {/* Pause / Resume Auto-Flip (10s row table pagination) */}
           <button
             onClick={() => setIsAutoFlipping(prev => !prev)}
-            title={isAutoFlipping ? "Pause 7s table row pagination" : "Resume 7s table row pagination"}
+            title={isAutoFlipping ? "Pause 10s table row pagination" : "Resume 10s table row pagination"}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all cursor-pointer border-2 shadow-sm ${
               isAutoFlipping
                 ? 'bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800 hover:bg-blue-100'
@@ -437,7 +467,7 @@ export const LivePage: React.FC = () => {
           >
             {isAutoFlipping ? (
               <>
-                <Pause className="w-4 h-4" /> <span>Table Flip: 7s</span>
+                <Pause className="w-4 h-4" /> <span>Table Flip: 10s</span>
               </>
             ) : (
               <>
@@ -573,8 +603,9 @@ export const LivePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Table Container - Full Edge-to-Edge Width, NO Horizontal Scroll */}
-      <Card className="p-0 overflow-hidden border-2 border-slate-200/90 dark:border-slate-800 shadow-xl w-full">
+      {/* Main Table Container - Full Edge-to-Edge Width, Auto-positioned on mount */}
+      <div ref={tableContainerRef} id="live-table-section" className="w-full">
+        <Card className="p-0 overflow-hidden border-2 border-slate-200/90 dark:border-slate-800 shadow-xl w-full">
         {/* Table Top Toolbar */}
         <div className="p-3 sm:p-4 border-b-2 border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Left: Search & Filter */}
@@ -977,6 +1008,7 @@ export const LivePage: React.FC = () => {
           </div>
         </div>
       </Card>
+      </div>
     </motion.div>
   );
 };

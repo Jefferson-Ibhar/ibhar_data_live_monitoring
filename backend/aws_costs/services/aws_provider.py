@@ -432,7 +432,7 @@ class AWSCostProvider(CostProvider):
         health = self.get_integration_health()
         resources = self.get_running_resources()
 
-        # 1. Today's cost
+        # 1. Today's cost & Yesterday's finalized cost
         now = timezone.now()
         today_str = now.strftime("%Y-%m-%d")
         all_daily = daily.get("ResultsByTime", [])
@@ -445,23 +445,29 @@ class AWSCostProvider(CostProvider):
             except (ValueError, TypeError):
                 today_cost = 0.0
 
+        # Yesterday's finalized cost (latest complete 24-hr cycle)
+        yesterday_str = (now.date() - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday_entry = next((d for d in all_daily if d.get("TimePeriod", {}).get("Start") == yesterday_str), None)
+        if not yesterday_entry and len(all_daily) >= 2:
+            yesterday_entry = all_daily[-2] if all_daily[-1].get("TimePeriod", {}).get("Start") == today_str else all_daily[-1]
+
+        yesterday_cost = 0.0
+        if yesterday_entry and "Total" in yesterday_entry:
+            try:
+                yesterday_cost = float(yesterday_entry["Total"]["UnblendedCost"].get("Amount", 0.0))
+            except (ValueError, TypeError):
+                yesterday_cost = 0.0
+
         # 2. Hourly Burn Rate (Estimated)
         # Hours elapsed today in UTC
         hours_elapsed = now.hour + (now.minute / 60.0)
         if hours_elapsed >= 1.0 and today_cost > 0.0:
             current_hourly_rate = round(today_cost / hours_elapsed, 2)
+        elif yesterday_cost > 0.0:
+            # Fallback to yesterday's finalized cost / 24
+            current_hourly_rate = round(yesterday_cost / 24.0, 2)
         else:
-            # Fallback to yesterday's cost / 24
-            yesterday_str = (now.date() - timedelta(days=1)).strftime("%Y-%m-%d")
-            yesterday_entry = next((d for d in all_daily if d.get("TimePeriod", {}).get("Start") == yesterday_str), None)
-            if yesterday_entry and "Total" in yesterday_entry:
-                try:
-                    yesterday_cost = float(yesterday_entry["Total"]["UnblendedCost"].get("Amount", 0.0))
-                    current_hourly_rate = round(yesterday_cost / 24.0, 2)
-                except (ValueError, TypeError):
-                    current_hourly_rate = 0.0
-            else:
-                current_hourly_rate = 0.0
+            current_hourly_rate = 0.0
 
         top_services = by_service.get("services", [])[:3]
 
@@ -472,6 +478,7 @@ class AWSCostProvider(CostProvider):
             "current_hourly_rate": current_hourly_rate,
             "current_hourly_rate_is_estimate": True,
             "today_cost": round(today_cost, 2),
+            "yesterday_cost": round(yesterday_cost, 2),
             "mtd_cost": float(forecast.get("Budget", {}).get("ActualSpend", {}).get("Amount", 0.0)),
             "forecast_cost": float(forecast.get("Total", {}).get("Amount", 0.0)),
             "budget_limit": float(forecast.get("Budget", {}).get("BudgetLimit", {}).get("Amount", 0.0)),

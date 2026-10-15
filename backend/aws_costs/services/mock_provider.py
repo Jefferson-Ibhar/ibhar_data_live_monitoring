@@ -369,6 +369,7 @@ class MockCostProvider(CostProvider):
         # Estimated hourly rate (today_cost / elapsed hours)
         hours_elapsed = max(1.0, now.hour + (now.minute / 60.0))
         current_hourly_cost = round(today_cost / hours_elapsed, 2)
+        yesterday_cost = round(today_cost * 0.94, 2)
 
         # Top 3 services
         top_services = by_service.get("services", [])[:3]
@@ -380,6 +381,7 @@ class MockCostProvider(CostProvider):
             "current_hourly_rate": round(current_hourly_cost, 2),
             "current_hourly_rate_is_estimate": True,
             "today_cost": round(today_cost, 2),
+            "yesterday_cost": round(yesterday_cost, 2),
             "mtd_cost": float(forecast["Budget"]["ActualSpend"]["Amount"]),
             "forecast_cost": float(forecast["Total"]["Amount"]),
             "budget_limit": float(forecast["Budget"]["BudgetLimit"]["Amount"]),

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -38,7 +38,7 @@ export const AwsCostsPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
-  // 10s Page Auto-Swap states (between AWS Costs and Live)
+  // 30s Page Auto-Swap states (between AWS Costs and Live)
   const [isPageRotating, setIsPageRotating] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('ibhar_auto_page_rotate');
@@ -47,7 +47,7 @@ export const AwsCostsPage: React.FC = () => {
       return true;
     }
   });
-  const [pageTimeRemaining, setPageTimeRemaining] = useState<number>(10);
+  const [pageTimeRemaining, setPageTimeRemaining] = useState<number>(30);
 
   // Dynamic Month-to-Date Budget Target (configured dynamically via Settings)
   const [customBudget, setCustomBudget] = useState<number>(() => {
@@ -89,13 +89,13 @@ export const AwsCostsPage: React.FC = () => {
     });
   };
 
-  // 10-Second Page Transition Timer (AWS Costs -> Live)
+  // 30-Second Page Transition Timer (AWS Costs -> Live)
   useEffect(() => {
     if (!isPageRotating) return;
 
-    setPageTimeRemaining(10);
+    setPageTimeRemaining(30);
     const startMs = Date.now();
-    const durationMs = 10000;
+    const durationMs = 30000;
 
     const interval = setInterval(() => {
       const elapsed = Date.now() - startMs;
@@ -110,9 +110,40 @@ export const AwsCostsPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [isPageRotating, navigate]);
 
-  const fetchDashboardData = async () => {
+  const lastFetchedAtRef = useRef<string>('');
+  const kpiGridRef = useRef<HTMLDivElement>(null);
+
+  // By default, auto-position the page at the KPI cards grid below the sticky header
+  useEffect(() => {
+    let timeoutId: any;
+    const scrollToKpiGrid = () => {
+      if (kpiGridRef.current) {
+        const headerEl = document.querySelector('header');
+        const headerHeight = headerEl ? headerEl.getBoundingClientRect().height : 72;
+        const rect = kpiGridRef.current.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const targetTop = rect.top + scrollTop - headerHeight - 8;
+
+        window.scrollTo({
+          top: Math.max(0, targetTop),
+          behavior: 'instant'
+        });
+      }
+    };
+
+    scrollToKpiGrid();
+    const frameId = requestAnimationFrame(scrollToKpiGrid);
+    timeoutId = setTimeout(scrollToKpiGrid, 80);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  const fetchDashboardData = async (silent = false) => {
     try {
-      setErrorMsg(null);
+      if (!silent) setErrorMsg(null);
       const [sum, day, srv, res] = await Promise.all([
         apiService.getAwsCostSummary(),
         apiService.getAwsDailyCosts(30),
@@ -125,6 +156,16 @@ export const AwsCostsPage: React.FC = () => {
         if (sum.last_updated) {
           setLastUpdated(sum.last_updated);
         }
+
+        // Auto-detect when new twice-daily AWS data arrives in database
+        const currentFetchedAt = sum.fetched_at || sum.last_updated || '';
+        if (lastFetchedAtRef.current && currentFetchedAt && currentFetchedAt !== lastFetchedAtRef.current) {
+          setSyncNotice('✨ Fresh twice-daily AWS Cost data received! All charts and metrics have auto-updated.');
+          setTimeout(() => setSyncNotice(null), 8000);
+        }
+        if (currentFetchedAt) {
+          lastFetchedAtRef.current = currentFetchedAt;
+        }
       }
       if (day && day.results) setDailyData(day.results);
       if (srv && srv.services) setServiceData(srv.services);
@@ -135,17 +176,30 @@ export const AwsCostsPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Failed to load AWS Cost telemetry:', err);
-      setErrorMsg('Could not reach AWS Cost API. Showing cached snapshot.');
+      if (!silent) setErrorMsg('Could not reach AWS Cost API. Showing cached snapshot.');
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  // Polling cycle set to 30 minutes (snapshots update twice daily)
+  // Auto-polling cycle set to 30s: fast auto-update when new data arrives (reads local DB, zero AWS fees)
   useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 1800000);
+    fetchDashboardData(false);
+    const interval = setInterval(() => {
+      fetchDashboardData(true);
+    }, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Immediate refresh when user switches back to this browser tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchDashboardData(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
   const handleManualRefresh = () => {
@@ -254,6 +308,28 @@ export const AwsCostsPage: React.FC = () => {
   const forecastCost = Number(summary?.forecast_cost ?? 2450.00);
   const hourlyRate = Number(summary?.current_hourly_rate ?? 2.85);
 
+  // Derive Yesterday's spend (most recent full finalized day)
+  const { yesterdayCost, yesterdayLabel } = (() => {
+    if (summary?.yesterday_cost !== undefined && summary?.yesterday_cost !== null && Number(summary.yesterday_cost) > 0) {
+      return { yesterdayCost: Number(summary.yesterday_cost), yesterdayLabel: 'Yesterday' };
+    }
+    if (dailyData && dailyData.length > 0) {
+      const todayIso = new Date().toISOString().split('T')[0];
+      const pastEntries = dailyData.filter((d: any) => {
+        const start = d.TimePeriod?.Start || '';
+        return start < todayIso;
+      });
+      const targetEntry = pastEntries.length > 0 ? pastEntries[pastEntries.length - 1] : dailyData[dailyData.length - 1];
+      const amt = Number(targetEntry?.Total?.UnblendedCost?.Amount || 0);
+      const startDt = targetEntry?.TimePeriod?.Start ? new Date(targetEntry.TimePeriod.Start) : null;
+      const label = startDt && !isNaN(startDt.getTime())
+        ? `${monthNames[startDt.getMonth()]} ${startDt.getDate()}`
+        : 'Yesterday';
+      return { yesterdayCost: amt, yesterdayLabel: label };
+    }
+    return { yesterdayCost: Number(summary?.today_cost ?? 22.77), yesterdayLabel: 'Yesterday' };
+  })();
+
   const ec2Resources = resources.filter((r: any) => r.type?.toLowerCase().includes('ec2'));
   const totalEc2Count = ec2Resources.length || 3;
   const runningEc2Count = ec2Resources.filter((r: any) => r.state?.toLowerCase() === 'running').length || totalEc2Count;
@@ -293,10 +369,10 @@ export const AwsCostsPage: React.FC = () => {
         </div>
 
         <div className="flex items-center flex-wrap gap-2.5 self-start sm:self-auto">
-          {/* 10s Auto Page Rotator (AWS Cost <-> Live) */}
+          {/* 30s Auto Page Rotator (AWS Cost <-> Live) */}
           <button
             onClick={togglePageRotate}
-            title={isPageRotating ? "Auto-transition active: Will switch back to Live Monitoring after 10s. Click to pause." : "Auto-transition paused. Click to resume."}
+            title={isPageRotating ? "Auto-transition active: Will switch back to Live Monitoring after 30s. Click to pause." : "Auto-transition paused. Click to resume."}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer border shadow-sm ${
               isPageRotating
                 ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 ring-2 ring-indigo-400/20'
@@ -358,8 +434,8 @@ export const AwsCostsPage: React.FC = () => {
         </div>
       )}
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
+      {/* KPI Cards Grid - Auto-scrolled to here by default */}
+      <div ref={kpiGridRef} id="aws-kpi-grid" className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
         {/* KPI 1: Hourly Burn (Estimate) */}
         <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs font-extrabold text-slate-500 dark:text-slate-400 mb-2">
@@ -377,19 +453,19 @@ export const AwsCostsPage: React.FC = () => {
           </p>
         </div>
 
-        {/* KPI 2: Today's Spend */}
+        {/* KPI 2: Yesterday's Spend */}
         <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs font-extrabold text-slate-500 dark:text-slate-400 mb-2">
-            <span>TODAY'S SPEND</span>
+            <span>YESTERDAY'S SPEND</span>
             <Zap className="w-4 h-4 text-indigo-500" />
           </div>
           <div className="flex items-baseline gap-1 my-1">
             <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-              ${Number(summary?.today_cost ?? 68.40).toFixed(2)}
+              ${yesterdayCost.toFixed(2)}
             </span>
           </div>
           <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-            Accrued since 00:00 UTC
+            {yesterdayLabel ? `${yesterdayLabel} finalized` : 'Full 24-hr finalized spend'}
           </p>
         </div>
 

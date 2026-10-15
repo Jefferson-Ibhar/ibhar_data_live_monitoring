@@ -303,26 +303,25 @@ def summary_view(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def force_refresh_view(request):
     """
     POST /aws-costs/api/refresh/
-    Forced telemetry refresh with a 1-hour cooldown to protect against Cost Explorer spend.
-    Staff/Authenticated users only.
+    Forced telemetry refresh with a 12-hour cooldown to strictly protect twice-daily Cost Explorer policy.
     """
     try:
         latest_snapshot = AwsCostSnapshot.objects.filter(status="success").first()
-        cooldown_window = timedelta(hours=1)
+        cooldown_window = timedelta(hours=12)
         now = timezone.now()
 
         if latest_snapshot and (now - latest_snapshot.fetched_at) < cooldown_window:
-            elapsed_minutes = int((now - latest_snapshot.fetched_at).total_seconds() // 60)
-            remaining_minutes = 60 - elapsed_minutes
+            elapsed_hours = (now - latest_snapshot.fetched_at).total_seconds() / 3600
+            remaining_hours = 12.0 - elapsed_hours
             return Response({
                 "success": False,
-                "error": f"Refresh cooldown active. Data was refreshed {elapsed_minutes}m ago. Please wait {remaining_minutes}m before triggering another AWS Cost Explorer query.",
+                "error": f"Twice-daily rate limit active. Data was refreshed {elapsed_hours:.1f}h ago. Next allowable AWS query in {remaining_hours:.1f}h.",
                 "last_updated": latest_snapshot.fetched_at.isoformat(),
-                "retry_after_minutes": remaining_minutes
+                "retry_after_hours": round(remaining_hours, 1)
             }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         new_snapshot = refresh_aws_cost_snapshot(source=f"manual_api_user_{request.user.username}", force=True)
