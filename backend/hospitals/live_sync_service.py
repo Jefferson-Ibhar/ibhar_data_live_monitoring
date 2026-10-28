@@ -333,7 +333,7 @@ def fetch_hospital_sync_details(
     hospital_code: Optional[str] = None,
     api_url: Optional[str] = None,
     user_code: Optional[str] = None,
-    timeout: int = 60,
+    timeout: int = 120,
     extra_params: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, Any, Optional[str]]:
     """
@@ -563,13 +563,17 @@ def get_live_dashboard(
             )
             hospital_summaries.append(summary)
     else:
-        # No specific codes configured: fetch entire dataset and group by HospitalCode
-        success, raw_records, err_msg = fetch_hospital_sync_details(
-            hospital_code=None,
-            api_url=api_url,
-            user_code=user_code,
-            extra_params=extra_params,
-        )
+        # No specific codes configured: fetch entire dataset via shared cached records if standard request
+        if not extra_params:
+            success, raw_records, err_msg = get_cached_raw_records(ttl_seconds=300)
+        else:
+            success, raw_records, err_msg = fetch_hospital_sync_details(
+                hospital_code=None,
+                api_url=api_url,
+                user_code=user_code,
+                timeout=120,
+                extra_params=extra_params,
+            )
 
         if not success or raw_records is None:
             now_str = timezone.now().isoformat()
@@ -626,7 +630,7 @@ _LIVE_RECORDS_CACHE: Dict[str, Any] = {
 }
 
 
-def get_cached_raw_records(ttl_seconds: int = 60, force_refresh: bool = False) -> Tuple[bool, List[Dict[str, Any]], Optional[str]]:
+def get_cached_raw_records(ttl_seconds: int = 300, force_refresh: bool = False) -> Tuple[bool, List[Dict[str, Any]], Optional[str]]:
     """Fetches and caches live external API records in memory for high-performance querying."""
     global _LIVE_RECORDS_CACHE
     now = timezone.now()
@@ -635,7 +639,7 @@ def get_cached_raw_records(ttl_seconds: int = 60, force_refresh: bool = False) -
         if age < ttl_seconds:
             return True, _LIVE_RECORDS_CACHE["records"], None
 
-    ok, raw_records, err = fetch_hospital_sync_details(hospital_code=None, timeout=60)
+    ok, raw_records, err = fetch_hospital_sync_details(hospital_code=None, timeout=120)
     if ok and raw_records:
         _LIVE_RECORDS_CACHE["timestamp"] = now
         _LIVE_RECORDS_CACHE["records"] = raw_records
