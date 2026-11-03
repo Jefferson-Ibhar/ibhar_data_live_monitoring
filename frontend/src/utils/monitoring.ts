@@ -1,15 +1,15 @@
 import type { Hospital } from '../types';
 
 export interface MonitoringThresholds {
-  healthyMaxMinutes: number; // 0-30 min
-  delayedMaxMinutes: number; // 30-60 min
-  warningMaxMinutes: number; // 60-120 min
+  healthyMaxMinutes: number; // 0-90 min
+  delayedMaxMinutes: number; // 91-270 min
+  warningMaxMinutes: number; // >270 min
 }
 
 export const DEFAULT_THRESHOLDS: MonitoringThresholds = {
-  healthyMaxMinutes: 30,
-  delayedMaxMinutes: 60,
-  warningMaxMinutes: 120,
+  healthyMaxMinutes: 90,
+  delayedMaxMinutes: 270,
+  warningMaxMinutes: 300,
 };
 
 export const parseDateComponents = (tsStr?: string | null): Date | null => {
@@ -54,10 +54,10 @@ export interface LiveStatusInfo {
 
 export const getHospitalLiveStatus = (
   delay: number,
-  thresholds: { receivingMaxMinutes?: number; delayedMaxMinutes?: number } = { receivingMaxMinutes: 30, delayedMaxMinutes: 61 }
+  thresholds: { receivingMaxMinutes?: number; delayedMaxMinutes?: number } = { receivingMaxMinutes: 90, delayedMaxMinutes: 270 }
 ): LiveStatusInfo => {
-  const delayedMax = thresholds.delayedMaxMinutes ?? 61;
-  const receivingMax = thresholds.receivingMaxMinutes ?? 30;
+  const delayedMax = thresholds.delayedMaxMinutes ?? 270;
+  const receivingMax = thresholds.receivingMaxMinutes ?? 90;
 
   if (delay > delayedMax) {
     return {
@@ -85,12 +85,20 @@ export const getHospitalLiveStatus = (
 
 export const getStoredThresholds = () => {
   let customThresholds: Record<string, { receivingMaxMinutes: number; delayedMaxMinutes: number }> = {};
-  let globalThresh = { receivingMaxMinutes: 30, delayedMaxMinutes: 61 };
+  let globalThresh = { receivingMaxMinutes: 90, delayedMaxMinutes: 270 };
   try {
     const savedCustom = localStorage.getItem('ibhar_hospital_thresholds');
     if (savedCustom) customThresholds = JSON.parse(savedCustom);
     const savedGlobal = localStorage.getItem('ibhar_global_threshold');
-    if (savedGlobal) globalThresh = JSON.parse(savedGlobal);
+    if (savedGlobal) {
+      const parsed = JSON.parse(savedGlobal);
+      // Migrate legacy 30/60 or 30/61 default to 90/270
+      if (parsed && parsed.receivingMaxMinutes === 30 && (parsed.delayedMaxMinutes === 60 || parsed.delayedMaxMinutes === 61)) {
+        globalThresh = { receivingMaxMinutes: 90, delayedMaxMinutes: 270 };
+      } else if (parsed && typeof parsed.receivingMaxMinutes === 'number' && typeof parsed.delayedMaxMinutes === 'number') {
+        globalThresh = parsed;
+      }
+    }
   } catch {
     // Ignore error
   }

@@ -16,8 +16,8 @@ interface HospitalThresholdConfig {
 }
 
 const DEFAULT_GLOBAL_THRESHOLDS: HospitalThresholdConfig = {
-  receivingMaxMinutes: 30,
-  delayedMaxMinutes: 61
+  receivingMaxMinutes: 90,
+  delayedMaxMinutes: 270
 };
 
 export const HospitalRefreshRatePage: React.FC = () => {
@@ -36,7 +36,15 @@ export const HospitalRefreshRatePage: React.FC = () => {
   const [globalThreshold, setGlobalThreshold] = useState<HospitalThresholdConfig>(() => {
     try {
       const saved = localStorage.getItem('ibhar_global_threshold');
-      return saved ? JSON.parse(saved) : DEFAULT_GLOBAL_THRESHOLDS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // If legacy default 30/60 or 30/61, migrate to 90/270
+        if (parsed && parsed.receivingMaxMinutes === 30 && (parsed.delayedMaxMinutes === 60 || parsed.delayedMaxMinutes === 61)) {
+          return DEFAULT_GLOBAL_THRESHOLDS;
+        }
+        return parsed;
+      }
+      return DEFAULT_GLOBAL_THRESHOLDS;
     } catch {
       return DEFAULT_GLOBAL_THRESHOLDS;
     }

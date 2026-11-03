@@ -235,7 +235,7 @@ class MockCostProvider(CostProvider):
         days_passed = max(1, now.day)
         daily_rate = mtd_cost / days_passed
         projected_total = round(mtd_cost + ((num_days - days_passed) * daily_rate), 2)
-        budget_limit = 2800.00
+        budget_limit = 680.00
         budget_percent = round((mtd_cost / budget_limit) * 100, 1)
 
         return {

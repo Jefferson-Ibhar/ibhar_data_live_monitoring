@@ -13,12 +13,13 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
-  Search,
   RefreshCw,
   Sparkles,
   Activity,
   CheckCircle2,
-  Tv
+  Tv,
+  Coins,
+  Zap
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -27,6 +28,7 @@ import {
   AreaChart
 } from 'recharts';
 import type { IntegrationHealthLog, IntegrationTrendPoint } from '../../types';
+import { apiService } from '../../services/api';
 
 /**
  * Line Graph Sparkline Cell for Ingestion Trend - TV & Display Optimized
@@ -39,7 +41,7 @@ const IngestionSparkline: React.FC<{ points: IntegrationTrendPoint[]; isCritical
   const fillColor = isCritical ? '#FCA5A5' : '#93C5FD';
 
   return (
-    <div className="w-full h-10 relative">
+    <div className="w-full h-8 relative">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={points} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
           <defs>
@@ -75,10 +77,10 @@ const IngestionSparkline: React.FC<{ points: IntegrationTrendPoint[]; isCritical
             type="monotone"
             dataKey="record_count"
             stroke={strokeColor}
-            strokeWidth={2.5}
+            strokeWidth={2}
             fill={`url(#grad-${isCritical ? 'crit' : 'norm'})`}
-            dot={points.length === 1 ? { r: 3, fill: strokeColor } : false}
-            activeDot={{ r: 4, fill: strokeColor }}
+            dot={points.length === 1 ? { r: 2.5, fill: strokeColor } : false}
+            activeDot={{ r: 3.5, fill: strokeColor }}
             isAnimationActive={false}
           />
         </AreaChart>
@@ -91,18 +93,37 @@ export const LivePage: React.FC = () => {
   const navigate = useNavigate();
   const {
     integrationHealthData,
-    lastUpdated,
     manualRefresh,
     isSimulatingUpdate,
     thresholdVersion
   } = useMonitoring();
 
-  // Page flipping states (for 4s table records pagination)
-  const [currentPage, setCurrentPage] = useState<number>(0);
+  // Page flipping states
+  const [receivingDelayedPage, setReceivingDelayedPage] = useState<number>(0);
+  const [criticalPage, setCriticalPage] = useState<number>(0);
   const [isAutoFlipping, setIsAutoFlipping] = useState<boolean>(true);
-  const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
-  const [progress, setProgress] = useState<number>(0);
+
+  // AWS Cost state for Column 3
+  const [awsSummary, setAwsSummary] = useState<any>(null);
+  const [awsDailyData, setAwsDailyData] = useState<any[]>([]);
+  const [isAwsLoading, setIsAwsLoading] = useState<boolean>(false);
+  const [customBudget, setCustomBudget] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('ibhar_aws_monthly_budget');
+      if (saved) {
+        const val = parseFloat(saved);
+        if (val === 2800) {
+          localStorage.setItem('ibhar_aws_monthly_budget', '680');
+          return 680;
+        }
+        return isNaN(val) ? 680 : val;
+      }
+      return 680;
+    } catch {
+      return 680;
+    }
+  });
 
   // 70s Page Auto-Swap states (between Live and AWS Costs)
   const [isPageRotating, setIsPageRotating] = useState<boolean>(() => {
@@ -127,20 +148,20 @@ export const LivePage: React.FC = () => {
 
   const ITEMS_PER_PAGE = 7;
   const FLIP_INTERVAL_MS = 10000;
-  const PROGRESS_TICK_MS = 50;
 
-  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const kpiContainerRef = useRef<HTMLDivElement>(null);
 
-  // By default, auto-position the page at the table toolbar so it aligns under the sticky header
+  // By default, auto-position the page at the KPI cards so it aligns under the sticky header
   useEffect(() => {
     let timeoutId: any;
-    const scrollToTable = () => {
-      if (tableContainerRef.current) {
+    let timeoutId2: any;
+    const scrollToKpi = () => {
+      if (kpiContainerRef.current) {
         const headerEl = document.querySelector('header');
         const headerHeight = headerEl ? headerEl.getBoundingClientRect().height : 72;
-        const rect = tableContainerRef.current.getBoundingClientRect();
+        const rect = kpiContainerRef.current.getBoundingClientRect();
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const targetTop = rect.top + scrollTop - headerHeight - 8;
+        const targetTop = rect.top + scrollTop - headerHeight - 12;
 
         window.scrollTo({
           top: Math.max(0, targetTop),
@@ -149,15 +170,67 @@ export const LivePage: React.FC = () => {
       }
     };
 
-    scrollToTable();
-    const frameId = requestAnimationFrame(scrollToTable);
-    timeoutId = setTimeout(scrollToTable, 80);
+    scrollToKpi();
+    const frameId = requestAnimationFrame(scrollToKpi);
+    timeoutId = setTimeout(scrollToKpi, 80);
+    timeoutId2 = setTimeout(scrollToKpi, 250);
 
     return () => {
       cancelAnimationFrame(frameId);
       clearTimeout(timeoutId);
+      clearTimeout(timeoutId2);
     };
   }, []);
+
+  // Fetch AWS Cost metrics for Column 3
+  const fetchAwsData = async () => {
+    try {
+      setIsAwsLoading(true);
+      const [sum, day] = await Promise.all([
+        apiService.getAwsCostSummary(),
+        apiService.getAwsDailyCosts(30),
+      ]);
+      if (sum) setAwsSummary(sum);
+      if (Array.isArray(day)) setAwsDailyData(day);
+    } catch (err) {
+      console.error('Failed to fetch AWS costs for LivePage:', err);
+    } finally {
+      setIsAwsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAwsData();
+    const interval = setInterval(fetchAwsData, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Synchronize dynamic budget settings
+  useEffect(() => {
+    const handleBudgetChange = () => {
+      try {
+        const saved = localStorage.getItem('ibhar_aws_monthly_budget');
+        if (saved) {
+          const val = parseFloat(saved);
+          if (!isNaN(val) && val > 0) {
+            setCustomBudget(val);
+          }
+        }
+      } catch {}
+    };
+    window.addEventListener('aws-budget-setting-changed', handleBudgetChange);
+    window.addEventListener('storage', handleBudgetChange);
+    return () => {
+      window.removeEventListener('aws-budget-setting-changed', handleBudgetChange);
+      window.removeEventListener('storage', handleBudgetChange);
+    };
+  }, []);
+
+  // Combined manual refresh for hospital telemetry & AWS costs
+  const handleManualRefresh = () => {
+    manualRefresh();
+    fetchAwsData();
+  };
 
   // Extract logs from integrationHealthData
   const logs: IntegrationHealthLog[] = useMemo(() => {
@@ -209,17 +282,16 @@ export const LivePage: React.FC = () => {
     return `${delayMinutes} min`;
   };
 
-  // Determine status & styling based on either custom hospital thresholds or project defaults:
-  // Default: <= 30 mins: RECEIVING, 31 to 61 mins: DELAYED, > 61 mins: CRITICAL
+  // Determine status & styling based on either custom hospital thresholds or project defaults
   const getHospitalStatus = (
     delay: number,
-    thresholds: { receivingMaxMinutes: number; delayedMaxMinutes: number } = { receivingMaxMinutes: 30, delayedMaxMinutes: 61 }
+    thresholds: { receivingMaxMinutes: number; delayedMaxMinutes: number } = { receivingMaxMinutes: 90, delayedMaxMinutes: 270 }
   ) => {
     if (delay > thresholds.delayedMaxMinutes) {
       return {
         label: 'CRITICAL',
         priority: 1, // Highest priority (Critical first)
-        rowBg: 'bg-rose-50/30 dark:bg-rose-950/20 hover:bg-rose-50/70 dark:hover:bg-rose-950/40',
+        rowBg: 'bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-50/70 dark:hover:bg-rose-950/40',
         textColor: 'text-rose-600 dark:text-rose-400',
       };
     }
@@ -234,7 +306,7 @@ export const LivePage: React.FC = () => {
     return {
       label: 'RECEIVING',
       priority: 3, // Standard priority
-      rowBg: 'hover:bg-slate-50/80 dark:hover:bg-slate-800/60',
+      rowBg: 'hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20',
       textColor: 'text-emerald-600 dark:text-emerald-400',
     };
   };
@@ -271,29 +343,11 @@ export const LivePage: React.FC = () => {
     }
   };
 
-  const formatShortTime = (ts?: string | null) => {
-    if (!ts) return '—';
-    try {
-      const dt = parseDateComponents(ts);
-      if (dt && !isNaN(dt.getTime())) {
-        const hours = String(dt.getHours()).padStart(2, '0');
-        const minutes = String(dt.getMinutes()).padStart(2, '0');
-        return `${hours}:${minutes}`;
-      }
-      if (ts.includes('T')) {
-        return ts.split('T')[1].substring(0, 5);
-      }
-      return ts.substring(0, 5);
-    } catch {
-      return ts;
-    }
-  };
-
-  // Sort and arrange hospitals: Critical first, then Delayed, then Receiving
-  const sortedHospitals = useMemo(() => {
+  // All enriched logs with calculated status & delay
+  const enrichedLogs = useMemo(() => {
     const { customThresholds, globalThresh } = getStoredThresholds();
 
-    const enriched = logs.map(log => {
+    return logs.map(log => {
       const delay = computeDelayMinutes(log.received_at || log.start_time, log.delay_minutes);
       const hId = log.hospital_id || log.hospital_code || '';
       const hospitalThreshold = customThresholds[hId] || globalThresh;
@@ -306,67 +360,87 @@ export const LivePage: React.FC = () => {
         sparklinePoints: getSparklinePoints(log, isCrit),
       };
     });
+  }, [logs, thresholdVersion]);
 
-    // Filter by search and status
-    const filtered = enriched.filter(h => {
-      const matchesSearch =
-        searchQuery === '' ||
-        h.hospital_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        h.hospital_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (h.data_structure && h.data_structure.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (h.service_name && h.service_name.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Summary counters for top KPI strip (calculated from all monitored nodes)
+  const criticalCount = useMemo(() => enrichedLogs.filter(h => h.computedStatus.label === 'CRITICAL').length, [enrichedLogs]);
+  const delayedCount = useMemo(() => enrichedLogs.filter(h => h.computedStatus.label === 'DELAYED').length, [enrichedLogs]);
+  const receivingCount = useMemo(() => enrichedLogs.filter(h => h.computedStatus.label === 'RECEIVING').length, [enrichedLogs]);
+  const totalRowsIngested = useMemo(() => enrichedLogs.reduce((acc, h) => acc + (h.record_count ?? h.records_processed ?? 0), 0), [enrichedLogs]);
+  const activeGlobalThresh = useMemo(() => getStoredThresholds().globalThresh, [thresholdVersion]);
 
-      const matchesStatus =
-        selectedStatusFilter === 'ALL' ||
-        h.computedStatus.label === selectedStatusFilter;
+  // Column 1: Receiving & Delayed Hospitals
+  const receivingDelayedHospitals = useMemo(() => {
+    return enrichedLogs
+      .filter(h => {
+        if (selectedStatusFilter === 'RECEIVING') return h.computedStatus.label === 'RECEIVING';
+        if (selectedStatusFilter === 'DELAYED') return h.computedStatus.label === 'DELAYED';
+        return h.computedStatus.label === 'RECEIVING' || h.computedStatus.label === 'DELAYED';
+      })
+      .sort((a, b) => {
+        if (a.computedStatus.priority !== b.computedStatus.priority) {
+          return a.computedStatus.priority - b.computedStatus.priority;
+        }
+        return (b.calculatedDelay || 0) - (a.calculatedDelay || 0);
+      });
+  }, [enrichedLogs, selectedStatusFilter]);
 
-      return matchesSearch && matchesStatus;
-    });
+  // Column 2: Critical Hospitals Separately
+  const criticalHospitals = useMemo(() => {
+    return enrichedLogs
+      .filter(h => {
+        if (selectedStatusFilter === 'DELAYED' || selectedStatusFilter === 'RECEIVING') return false;
+        return h.computedStatus.label === 'CRITICAL';
+      })
+      .sort((a, b) => (b.calculatedDelay || 0) - (a.calculatedDelay || 0));
+  }, [enrichedLogs, selectedStatusFilter]);
 
-    // Sort: Priority 1 (Critical) -> Priority 2 (Delayed) -> Priority 3 (Receiving)
-    // Within each priority group, sort by calculatedDelay descending (highest delay at top)
-    return filtered.sort((a, b) => {
-      if (a.computedStatus.priority !== b.computedStatus.priority) {
-        return a.computedStatus.priority - b.computedStatus.priority;
-      }
-      return (b.calculatedDelay || 0) - (a.calculatedDelay || 0);
-    });
-  }, [logs, searchQuery, selectedStatusFilter, thresholdVersion]);
+  // Pagination for Column 1 & Column 2
+  const receivingDelayedTotalPages = Math.max(1, Math.ceil(receivingDelayedHospitals.length / ITEMS_PER_PAGE));
+  const criticalTotalPages = Math.max(1, Math.ceil(criticalHospitals.length / ITEMS_PER_PAGE));
 
-  const totalPages = Math.max(1, Math.ceil(sortedHospitals.length / ITEMS_PER_PAGE));
+  const currentReceivingDelayedBatch = useMemo(() => {
+    const start = receivingDelayedPage * ITEMS_PER_PAGE;
+    return receivingDelayedHospitals.slice(start, start + ITEMS_PER_PAGE);
+  }, [receivingDelayedHospitals, receivingDelayedPage]);
 
-  // Auto-flip effect every 4 seconds
+  const currentCriticalBatch = useMemo(() => {
+    const start = criticalPage * ITEMS_PER_PAGE;
+    return criticalHospitals.slice(start, start + ITEMS_PER_PAGE);
+  }, [criticalHospitals, criticalPage]);
+
+  // Auto-flip effect every 10 seconds
   useEffect(() => {
-    if (!isAutoFlipping || totalPages <= 1) {
-      setProgress(0);
+    if (!isAutoFlipping || (receivingDelayedTotalPages <= 1 && criticalTotalPages <= 1)) {
       return;
     }
 
-    const startTime = Date.now();
-
-    const progressTimer = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const pct = Math.min(100, (elapsed / FLIP_INTERVAL_MS) * 100);
-      setProgress(pct);
-    }, PROGRESS_TICK_MS);
-
-    const flipTimer = setTimeout(() => {
-      setCurrentPage((prev) => (prev + 1) % totalPages);
-      setProgress(0);
+    const flipTimer = setInterval(() => {
+      if (receivingDelayedTotalPages > 1) {
+        setReceivingDelayedPage((prev) => (prev + 1) % receivingDelayedTotalPages);
+      }
+      if (criticalTotalPages > 1) {
+        setCriticalPage((prev) => (prev + 1) % criticalTotalPages);
+      }
     }, FLIP_INTERVAL_MS);
 
     return () => {
-      clearInterval(progressTimer);
-      clearTimeout(flipTimer);
+      clearInterval(flipTimer);
     };
-  }, [currentPage, isAutoFlipping, totalPages]);
+  }, [isAutoFlipping, receivingDelayedTotalPages, criticalTotalPages]);
 
-  // Adjust current page if out of bounds after filtering
+  // Adjust pagination if out of bounds after filtering
   useEffect(() => {
-    if (currentPage >= totalPages) {
-      setCurrentPage(0);
+    if (receivingDelayedPage >= receivingDelayedTotalPages) {
+      setReceivingDelayedPage(0);
     }
-  }, [totalPages, currentPage]);
+  }, [receivingDelayedTotalPages, receivingDelayedPage]);
+
+  useEffect(() => {
+    if (criticalPage >= criticalTotalPages) {
+      setCriticalPage(0);
+    }
+  }, [criticalTotalPages, criticalPage]);
 
   // 70-Second Page Transition Timer (Live -> AWS Costs)
   useEffect(() => {
@@ -389,40 +463,46 @@ export const LivePage: React.FC = () => {
     return () => clearInterval(interval);
   }, [isPageRotating, navigate]);
 
-  // Slice currently displayed 10 hospitals
-  const startIndex = currentPage * ITEMS_PER_PAGE;
-  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, sortedHospitals.length);
-  const currentBatch = sortedHospitals.slice(startIndex, endIndex);
+  // Column 3 AWS Metrics Calculations
+  const effectiveBudget = customBudget || awsSummary?.budget_limit || 680;
+  const mtdCost = Number(awsSummary?.mtd_cost ?? 48.54);
+  const budgetUsedPercent = Number(((mtdCost / effectiveBudget) * 100).toFixed(1));
+  const forecastCost = Number(awsSummary?.forecast_cost ?? 665.82);
+  const hourlyRate = Number(awsSummary?.current_hourly_rate ?? 0.81);
 
-  // Summary counters
-  const criticalCount = useMemo(() => sortedHospitals.filter(h => h.computedStatus.label === 'CRITICAL').length, [sortedHospitals]);
-  const delayedCount = useMemo(() => sortedHospitals.filter(h => h.computedStatus.label === 'DELAYED').length, [sortedHospitals]);
-  const receivingCount = useMemo(() => sortedHospitals.filter(h => h.computedStatus.label === 'RECEIVING').length, [sortedHospitals]);
-  const totalRowsIngested = useMemo(() => sortedHospitals.reduce((acc, h) => acc + (h.record_count ?? h.records_processed ?? 0), 0), [sortedHospitals]);
-  const activeGlobalThresh = useMemo(() => getStoredThresholds().globalThresh, [thresholdVersion]);
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  const { yesterdayCost, yesterdayLabel } = (() => {
+    if (awsSummary?.yesterday_cost !== undefined && awsSummary?.yesterday_cost !== null && Number(awsSummary.yesterday_cost) > 0) {
+      return { yesterdayCost: Number(awsSummary.yesterday_cost), yesterdayLabel: 'Yesterday' };
+    }
+    if (awsDailyData && awsDailyData.length > 0) {
+      const todayIso = new Date().toISOString().split('T')[0];
+      const pastEntries = awsDailyData.filter((d: any) => {
+        const start = d.TimePeriod?.Start || '';
+        return start < todayIso;
+      });
+      const targetEntry = pastEntries.length > 0 ? pastEntries[pastEntries.length - 1] : awsDailyData[awsDailyData.length - 1];
+      const amt = Number(targetEntry?.Total?.UnblendedCost?.Amount || 0);
+      const startDt = targetEntry?.TimePeriod?.Start ? new Date(targetEntry.TimePeriod.Start) : null;
+      const label = startDt && !isNaN(startDt.getTime())
+        ? `${monthNames[startDt.getMonth()]} ${startDt.getDate()}`
+        : 'Yesterday';
+      return { yesterdayCost: amt, yesterdayLabel: label };
+    }
+    return { yesterdayCost: Number(awsSummary?.today_cost ?? 19.35), yesterdayLabel: 'Yesterday' };
+  })();
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className="w-full max-w-full space-y-4 px-1 sm:px-2 pb-8"
+      className="w-full max-w-full space-y-2.5 px-1 sm:px-2 pb-8 -mt-1 sm:-mt-2"
     >
       {/* Top Page Header - TV Bold Design */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 px-1">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 px-1">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-800 shadow-sm">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
-              <span className="text-xs font-black uppercase text-blue-700 dark:text-blue-300 tracking-wider">
-                LIVE TELEMETRY MONITORING
-              </span>
-            </div>
-            <span className="text-xs sm:text-sm font-mono text-slate-400 font-extrabold">
-              Synced: {lastUpdated}
-            </span>
-          </div>
-
           <h1 className="font-heading font-black text-2xl sm:text-3xl md:text-4xl text-slate-900 dark:text-white tracking-wide [word-spacing:0.35rem] flex items-center gap-3">
             LIVE HOSPITAL TELEMETRY STREAM
             <TrendingUp className="w-8 h-8 text-blue-600 dark:text-blue-400" />
@@ -455,7 +535,7 @@ export const LivePage: React.FC = () => {
             )}
           </button>
 
-          {/* Pause / Resume Auto-Flip (10s row table pagination) */}
+          {/* Pause / Resume Auto-Flip */}
           <button
             onClick={() => setIsAutoFlipping(prev => !prev)}
             title={isAutoFlipping ? "Pause 10s table row pagination" : "Resume 10s table row pagination"}
@@ -478,19 +558,19 @@ export const LivePage: React.FC = () => {
 
           {/* Manual Refresh Button */}
           <button
-            onClick={manualRefresh}
-            disabled={isSimulatingUpdate}
+            onClick={handleManualRefresh}
+            disabled={isSimulatingUpdate || isAwsLoading}
             title="Refresh Live Telemetry Now"
             className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs sm:text-sm font-black transition-all cursor-pointer shadow-sm disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 stroke-[2.5] ${isSimulatingUpdate ? 'animate-spin text-blue-600' : ''}`} />
+            <RefreshCw className={`w-4 h-4 stroke-[2.5] ${isSimulatingUpdate || isAwsLoading ? 'animate-spin text-blue-600' : ''}`} />
             <span>Sync API</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Status Strip - TV Bold Numbers */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3">
+      {/* KPI Status Strip - TV Bold Numbers (UNTOUCHED) */}
+      <div ref={kpiContainerRef} id="live-kpi-section" className="grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3">
         {/* Critical Priority Card */}
         <div
           onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'CRITICAL' ? 'ALL' : 'CRITICAL')}
@@ -579,7 +659,7 @@ export const LivePage: React.FC = () => {
             <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
           </div>
           <div className="font-heading font-black text-2xl sm:text-3xl lg:text-4xl text-slate-900 dark:text-white">
-            {sortedHospitals.length}
+            {enrichedLogs.length}
           </div>
           <p className="text-[11px] text-slate-400 font-extrabold mt-0.5">
             47 Integrated Institutions
@@ -603,411 +683,536 @@ export const LivePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Table Container - Full Edge-to-Edge Width, Auto-positioned on mount */}
-      <div ref={tableContainerRef} id="live-table-section" className="w-full">
-        <Card className="p-0 overflow-hidden border-2 border-slate-200/90 dark:border-slate-800 shadow-xl w-full">
-        {/* Table Top Toolbar */}
-        <div className="p-3 sm:p-4 border-b-2 border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          {/* Left: Search & Filter */}
-          <div className="flex items-center flex-1 gap-3 max-w-md">
-            <div className="relative w-full">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setCurrentPage(0);
-                }}
-                placeholder="Search code, hospital name, data structure..."
-                className="w-full pl-10 pr-4 py-2 rounded-xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-bold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 shadow-sm"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
+      {/* 3-Column Section */}
+      <div id="live-table-section" className="w-full -mt-1 sm:-mt-1.5">
+        {/* 3 Columns Responsive Grid:
+            Column 1: Hospitals Receiving & Delayed Data (5 cols on xl - extended)
+            Column 2: Hospitals Critical Data (5 cols on xl)
+            Column 3: AWS Cost KPI Cards Stacked Vertically (2 cols on xl - compact)
+        */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-3.5 items-start">
+          {/* ======================================================================= */}
+          {/* COLUMN 1: HOSPITALS RECEIVING & DELAYED (lg: 6 cols, xl: 5 cols - EXTENDED) */}
+          {/* ======================================================================= */}
+          <div className="lg:col-span-6 xl:col-span-5 flex flex-col">
+            <Card className="p-0 overflow-hidden border-2 border-slate-200/90 dark:border-slate-800 shadow-xl flex flex-col bg-white dark:bg-slate-900 rounded-2xl">
+              {/* Header */}
+              <div className="p-3 border-b-2 border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="flex h-2.5 w-2.5 relative shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </span>
+                  <h2 className="font-heading font-black text-xs sm:text-sm uppercase tracking-wider text-slate-900 dark:text-white truncate">
+                    Receiving & Delayed
+                  </h2>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800">
+                      {receivingDelayedHospitals.filter(h => h.computedStatus.label === 'RECEIVING').length} Recv
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-800">
+                      {receivingDelayedHospitals.filter(h => h.computedStatus.label === 'DELAYED').length} Delay
+                    </span>
+                  </div>
+                </div>
+
+                {/* Pagination Controls */}
+                {receivingDelayedTotalPages > 1 && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => setReceivingDelayedPage((prev) => (prev === 0 ? receivingDelayedTotalPages - 1 : prev - 1))}
+                      className="p-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm"
+                      title="Previous Page"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-[11px] font-mono font-black text-slate-500 px-1">
+                      {receivingDelayedPage + 1}/{receivingDelayedTotalPages}
+                    </span>
+                    <button
+                      onClick={() => setReceivingDelayedPage((prev) => (prev + 1) % receivingDelayedTotalPages)}
+                      className="p-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm"
+                      title="Next Page"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Table */}
+              <div className="w-full overflow-hidden">
+                <table className="w-full table-fixed text-left border-collapse font-sans">
+                  <thead>
+                    <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
+                      <th className="py-2.5 px-2 w-[18%]">HCcode</th>
+                      <th className="py-2.5 px-2 w-[28%]">Name</th>
+                      <th className="py-2.5 px-2 w-[18%]">Last Recv</th>
+                      <th className="py-2.5 px-1.5 w-[14%] text-center">Status</th>
+                      <th className="py-2.5 px-1.5 w-[11%] text-right">Rows</th>
+                      <th className="py-2.5 px-1.5 w-[11%] text-center">Trend</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-xs">
+                    {currentReceivingDelayedBatch.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-slate-400 font-bold text-xs">
+                          No receiving or delayed hospitals matching criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      currentReceivingDelayedBatch.map((h, idx) => {
+                        const isDelayed = h.computedStatus.label === 'DELAYED';
+                        return (
+                          <tr
+                            key={`recv-del-${h.hospital_id}-${idx}`}
+                            className={`transition-colors ${
+                              isDelayed
+                                ? 'bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-50/70 dark:hover:bg-amber-950/35'
+                                : 'hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20'
+                            }`}
+                            style={{ perspective: 1000 }}
+                          >
+                            {/* 1. HCcode */}
+                            <td className="py-2.5 px-2 font-mono font-black text-xs text-slate-900 dark:text-white truncate">
+                              <motion.div
+                                key={`rd-code-${receivingDelayedPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, rotateX: -90, y: -4 }}
+                                animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                                style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                              >
+                                <CopyButton text={h.hospital_id} />
+                              </motion.div>
+                            </td>
+
+                            {/* 2. Hospital Name */}
+                            <td className="py-2.5 px-2 font-black text-slate-900 dark:text-white text-xs">
+                              <motion.div
+                                key={`rd-name-${receivingDelayedPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, rotateX: -90, y: -4 }}
+                                animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                                style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                              >
+                                <Link
+                                  to={`/hospitals/${h.hospital_id}`}
+                                  className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate block"
+                                  title={h.hospital_name}
+                                >
+                                  {h.hospital_name}
+                                </Link>
+                              </motion.div>
+                            </td>
+
+                            {/* 3. Last Received */}
+                            <td className="py-2.5 px-2 font-mono text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                              <motion.div
+                                key={`rd-ts-${receivingDelayedPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, rotateX: -90, y: -4 }}
+                                animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                                style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                              >
+                                {formatTimestamp(h.received_at || h.start_time)}
+                              </motion.div>
+                            </td>
+
+                            {/* 4. Status Badge */}
+                            <td className="py-2 px-1 text-center">
+                              <motion.div
+                                key={`rd-status-${receivingDelayedPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                              >
+                                {isDelayed ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shadow-sm" title={`Delayed: ${formatDelay(h.calculatedDelay)}`}>
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                    <span>DELAY</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 shadow-sm">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span>RECV</span>
+                                  </span>
+                                )}
+                              </motion.div>
+                            </td>
+
+                            {/* 5. Processed Rows */}
+                            <td className="py-2.5 px-1.5 font-mono font-black text-right text-emerald-600 dark:text-emerald-400 text-xs truncate">
+                              <motion.div
+                                key={`rd-rows-${receivingDelayedPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, rotateX: -90, y: -4 }}
+                                animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                                style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                              >
+                                {(h.record_count ?? h.records_processed ?? 0).toLocaleString()}
+                              </motion.div>
+                            </td>
+
+                            {/* 6. Ingestion Trend Sparkline */}
+                            <td className="py-2 px-1 text-center align-middle">
+                              <motion.div
+                                key={`rd-trend-${receivingDelayedPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, scaleY: 0.2 }}
+                                animate={{ opacity: 1, scaleY: 1 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                                style={{ transformOrigin: 'center center' }}
+                              >
+                                <IngestionSparkline points={h.sparklinePoints} isCritical={false} />
+                              </motion.div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Column 1 Footer */}
+              <div className="p-2.5 bg-slate-50 dark:bg-slate-900/80 border-t-2 border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  Total: {receivingDelayedHospitals.length} Streaming Nodes
+                </span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Healthy &amp; Lagging Streams
+                </span>
+              </div>
+            </Card>
           </div>
 
-          {/* Right: Flip Progress & Pagination Navigation */}
-          <div className="flex items-center flex-wrap justify-between sm:justify-end gap-3">
-            {/* Auto-flip ticker indicator */}
-            {isAutoFlipping && totalPages > 1 && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 shadow-sm">
-                <span className="text-xs font-black text-slate-600 dark:text-slate-300 font-mono">
-                  Next flip in {((FLIP_INTERVAL_MS * (100 - progress)) / 100000).toFixed(1)}s
-                </span>
-                <div className="w-16 sm:w-20 h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-600 transition-all duration-75 ease-linear rounded-full"
-                    style={{ width: `${progress}%` }}
-                  />
+          {/* ======================================================================= */}
+          {/* COLUMN 2: HOSPITALS CRITICAL ONLY (lg: 6 cols, xl: 5 cols - SEPARATE) */}
+          {/* ======================================================================= */}
+          <div className="lg:col-span-6 xl:col-span-5 flex flex-col">
+            <Card className="p-0 overflow-hidden border-2 border-slate-200/90 dark:border-slate-800 shadow-xl flex flex-col bg-white dark:bg-slate-900 rounded-2xl">
+              {/* Header */}
+              <div className="p-3 border-b-2 border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
+                  <h2 className="font-heading font-black text-xs sm:text-sm uppercase tracking-wider text-slate-900 dark:text-white truncate">
+                    Critical Attention
+                  </h2>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-800 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                      {criticalHospitals.length} Crit
+                    </span>
+                  </div>
+                </div>
+
+                {/* Pagination Controls with Page Pills */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => setCriticalPage((prev) => (prev === 0 ? criticalTotalPages - 1 : prev - 1))}
+                    className="p-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: criticalTotalPages }).map((_, idx) => {
+                      const start = idx * ITEMS_PER_PAGE + 1;
+                      const end = Math.min((idx + 1) * ITEMS_PER_PAGE, criticalHospitals.length);
+                      const isCurrent = criticalPage === idx;
+
+                      if (
+                        criticalTotalPages > 4 &&
+                        idx !== 0 &&
+                        idx !== criticalTotalPages - 1 &&
+                        Math.abs(idx - criticalPage) > 1
+                      ) {
+                        if (idx === 1 || idx === criticalTotalPages - 2) {
+                          return <span key={idx} className="text-slate-400 text-[10px] px-0.5 font-bold">..</span>;
+                        }
+                        return null;
+                      }
+
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => setCriticalPage(idx)}
+                          className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-black transition-all cursor-pointer border ${
+                            isCurrent
+                              ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                          }`}
+                          title={`Nodes ${start}-${end}`}
+                        >
+                          {start}-{end}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => setCriticalPage((prev) => (prev + 1) % criticalTotalPages)}
+                    className="p-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm"
+                    title="Next Page"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
-            )}
 
-            {/* Pagination Controls */}
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setCurrentPage((prev) => (prev === 0 ? totalPages - 1 : prev - 1))}
-                className="p-2 rounded-xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm"
-                title="Previous 7 Hospitals"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
+              {/* Table */}
+              <div className="w-full overflow-hidden">
+                <table className="w-full table-fixed text-left border-collapse font-sans">
+                  <thead>
+                    <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
+                      <th className="py-2.5 px-2 w-[18%]">HCcode</th>
+                      <th className="py-2.5 px-2 w-[32%]">Name</th>
+                      <th className="py-2.5 px-2 w-[22%]">Last Recv</th>
+                      <th className="py-2.5 px-2 w-[15%] text-right">Delay</th>
+                      <th className="py-2.5 px-1.5 w-[13%] text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-xs">
+                    {currentCriticalBatch.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-slate-400 font-bold text-xs">
+                          No critical hospitals matching criteria.
+                        </td>
+                      </tr>
+                    ) : (
+                      currentCriticalBatch.map((h, idx) => {
+                        const status = h.computedStatus;
+                        return (
+                          <tr
+                            key={`crit-${h.hospital_id}-${idx}`}
+                            className={`transition-colors ${status.rowBg}`}
+                            style={{ perspective: 1000 }}
+                          >
+                            {/* 1. HCcode */}
+                            <td className="py-2.5 px-2 font-mono font-black text-xs text-slate-900 dark:text-white truncate">
+                              <motion.div
+                                key={`crit-code-${criticalPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, rotateX: -90, y: -4 }}
+                                animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                                style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                              >
+                                <CopyButton text={h.hospital_id} />
+                              </motion.div>
+                            </td>
 
-              {/* Page Pill Buttons */}
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }).map((_, idx) => {
-                  const start = idx * ITEMS_PER_PAGE + 1;
-                  const end = Math.min((idx + 1) * ITEMS_PER_PAGE, sortedHospitals.length);
-                  const isCurrent = currentPage === idx;
+                            {/* 2. Hospital Name */}
+                            <td className="py-2.5 px-2 font-black text-slate-900 dark:text-white text-xs">
+                              <motion.div
+                                key={`crit-name-${criticalPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, rotateX: -90, y: -4 }}
+                                animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                                style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                              >
+                                <Link
+                                  to={`/hospitals/${h.hospital_id}`}
+                                  className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate block"
+                                  title={h.hospital_name}
+                                >
+                                  {h.hospital_name}
+                                </Link>
+                              </motion.div>
+                            </td>
 
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setCurrentPage(idx);
-                        setProgress(0);
-                      }}
-                      className={`px-3 py-1 rounded-xl text-xs sm:text-sm font-mono font-black transition-all cursor-pointer border-2 ${
-                        isCurrent
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20'
-                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      {start}-{end}
-                    </button>
-                  );
-                })}
+                            {/* 3. Last Received */}
+                            <td className="py-2.5 px-2 font-mono text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                              <motion.div
+                                key={`crit-ts-${criticalPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, rotateX: -90, y: -4 }}
+                                animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                                style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                              >
+                                {formatTimestamp(h.received_at || h.start_time)}
+                              </motion.div>
+                            </td>
+
+                            {/* 4. Delay */}
+                            <td className={`py-2.5 px-2 font-mono font-black text-right text-xs truncate ${status.textColor}`}>
+                              <motion.div
+                                key={`crit-delay-${criticalPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, rotateX: -90, y: -4 }}
+                                animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                                style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                              >
+                                {formatDelay(h.calculatedDelay)}
+                              </motion.div>
+                            </td>
+
+                            {/* 5. Status Badge */}
+                            <td className="py-2 px-1 text-center">
+                              <motion.div
+                                key={`crit-status-${criticalPage}-${h.hospital_id}`}
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ duration: 0.36, delay: idx * 0.05 }}
+                                style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                              >
+                                <motion.span
+                                  animate={{
+                                    scale: [1, 1.05, 1],
+                                    boxShadow: [
+                                      '0 0 0 0 rgba(239, 68, 68, 0.45)',
+                                      '0 0 0 4px rgba(239, 68, 68, 0)',
+                                      '0 0 0 0 rgba(239, 68, 68, 0.45)'
+                                    ]
+                                  }}
+                                  transition={{
+                                    duration: 1.4,
+                                    repeat: Infinity,
+                                    ease: 'easeInOut'
+                                  }}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-sm border border-rose-300"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                                  <span>CRIT</span>
+                                </motion.span>
+                              </motion.div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
 
-              <button
-                onClick={() => setCurrentPage((prev) => (prev + 1) % totalPages)}
-                className="p-2 rounded-xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer shadow-sm"
-                title="Next 7 Hospitals"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              {/* Column 2 Footer */}
+              <div className="p-2.5 bg-slate-50 dark:bg-slate-900/80 border-t-2 border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  Total: {criticalHospitals.length} Critical Hospitals
+                </span>
+                <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                  Critical Action Required
+                </span>
+              </div>
+            </Card>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* COLUMN 3: AWS COST KPI CARDS (lg: 12 cols, xl: 2 cols - COMPACT SIZED)   */}
+          {/* ========================================================================= */}
+          <div className="lg:col-span-12 xl:col-span-2 flex flex-col gap-2.5">
+            {/* Column Header: AWS COST */}
+            <div className="p-3 rounded-2xl border-2 border-slate-200/90 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 shadow-sm flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="flex h-2.5 w-2.5 relative shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+                </span>
+                <h2 className="font-heading font-black text-xs sm:text-sm uppercase tracking-wider text-slate-900 dark:text-white truncate">
+                  AWS COST
+                </h2>
+              </div>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-800 shrink-0">
+                LIVE
+              </span>
+            </div>
+
+            {/* KPI 1: Hourly Burn (Estimate) */}
+            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5">
+                <span className="truncate">HOURLY BURN</span>
+                <Zap className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+              </div>
+              <div className="flex items-baseline gap-1 my-0.5">
+                <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                  ${hourlyRate.toFixed(2)}
+                </span>
+                <span className="text-[10px] font-bold text-slate-400">/hr</span>
+              </div>
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 truncate">
+                Est. ${(hourlyRate * 24).toFixed(0)}/day
+              </p>
+            </div>
+
+            {/* KPI 2: Yesterday's Spend */}
+            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5">
+                <span className="truncate">YESTERDAY</span>
+                <Zap className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              </div>
+              <div className="flex items-baseline gap-1 my-0.5">
+                <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                  ${yesterdayCost.toFixed(2)}
+                </span>
+              </div>
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 truncate">
+                {yesterdayLabel ? `${yesterdayLabel} finalized` : 'Finalized spend'}
+              </p>
+            </div>
+
+            {/* KPI 3: Month-to-Date */}
+            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5">
+                <span className="truncate">MTD SPEND</span>
+                <button
+                  onClick={() => navigate('/notification-settings')}
+                  title="Configure Dynamic Monthly Budget in Settings"
+                  className="p-0.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-500 transition-colors cursor-pointer"
+                >
+                  <Coins className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="flex items-baseline gap-1 my-0.5">
+                <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                  ${mtdCost.toFixed(2)}
+                </span>
+              </div>
+              <div>
+                <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden mb-1">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      budgetUsedPercent > 100
+                        ? 'bg-rose-500'
+                        : budgetUsedPercent > 80
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${Math.min(100, budgetUsedPercent)}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400 truncate">
+                    {budgetUsedPercent}% of ${effectiveBudget.toLocaleString()}
+                  </p>
+                  <button
+                    onClick={() => navigate('/notification-settings')}
+                    className="text-[9px] font-bold text-indigo-500 hover:text-indigo-600 underline cursor-pointer shrink-0"
+                    title="Edit dynamic monthly budget in settings"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* KPI 4: Forecast */}
+            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5">
+                <span className="truncate">FORECAST</span>
+                <TrendingUp className={`w-3.5 h-3.5 shrink-0 ${forecastCost > effectiveBudget ? 'text-rose-500' : 'text-purple-500'}`} />
+              </div>
+              <div className="flex items-baseline gap-1 my-0.5">
+                <span className={`text-xl sm:text-2xl font-black font-mono ${forecastCost > effectiveBudget ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
+                  ${forecastCost.toFixed(2)}
+                </span>
+              </div>
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 truncate">
+                Target: &lt; ${effectiveBudget.toLocaleString()}
+              </p>
             </div>
           </div>
         </div>
-
-
-
-        {/* Full-width Responsive Table with ZERO Horizontal Scroll
-            Columns are allocated exact needed space to fit 100% screen width right next to the sidebar:
-            1. Hospital Code: 8%
-            2. Hospital Name: 22%
-            3. Last Received: 14% (Time + Date, no seconds)
-            4. Delay: 7%
-            5. Status: 10%
-            6. Processed Rows: 8%
-            7. Process Duration: 8%
-            8. Data Structure: 7%
-            9. Service Name: 8%
-            10. Trend: 8%
-        */}
-        {/* Full-width Responsive Table with ZERO Horizontal Scroll
-            Columns are allocated exact needed space to fit 100% screen width right next to the sidebar:
-            1. Hospital Code: 8%
-            2. Hospital Name: 22%
-            3. Last Received: 14% (Time + Date, no seconds)
-            4. Delay: 7%
-            5. Status: 10%
-            6. Processed Rows: 8%
-            7. Process Duration: 8%
-            8. Data Structure: 7%
-            9. Service Name: 8%
-            10. Trend: 8%
-        */}
-        <div className="w-full overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 shadow-sm">
-          <table className="w-full table-fixed text-left border-collapse font-sans">
-            <thead>
-              <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-xs sm:text-sm font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
-                {/* 1. Hospital Code */}
-                <th className="py-3.5 px-2.5 w-[8%]">
-                  HCcode
-                </th>
-
-                {/* 2. Hospital Name */}
-                <th className="py-3.5 px-2.5 w-[22%]">
-                  Name
-                </th>
-
-                {/* 3. Last Received */}
-                <th className="py-3.5 px-2.5 w-[14%]">
-                  Last Received
-                </th>
-
-                {/* 4. Delay */}
-                <th className="py-3.5 px-2.5 w-[7%] text-right">
-                  Delay
-                </th>
-
-                {/* 5. Status */}
-                <th className="py-3.5 px-2.5 w-[10%] text-center">
-                  Status
-                </th>
-
-                {/* 6. Processed Rows */}
-                <th className="py-3.5 px-2.5 w-[8%] text-right">
-                  Processed
-                </th>
-
-                {/* 7. Process Duration */}
-                <th className="py-3.5 px-2.5 w-[8%] text-right">
-                  Duration
-                </th>
-
-                {/* 8. Data Structure */}
-                <th className="py-3.5 px-2.5 w-[7%] text-center">
-                  Data Structure
-                </th>
-
-                {/* 9. Service Name */}
-                <th className="py-3.5 px-2.5 w-[8%]">
-                  Service
-                </th>
-
-                {/* 10. Ingestion Trend Line Graph */}
-                <th className="py-3.5 px-2.5 w-[8%] text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    <span>Trend</span>
-                  </div>
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-              {currentBatch.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-400 font-bold text-base">
-                    No hospitals found matching current criteria.
-                  </td>
-                </tr>
-              ) : (
-                currentBatch.map((h, idx) => {
-                  const status = h.computedStatus;
-                  const isCrit = status.label === 'CRITICAL';
-                  const isDelayed = status.label === 'DELAYED';
-                  const durationStr = h.duration_seconds !== undefined ? `${h.duration_seconds}s` : `${h.response_time_ms || 0} ms`;
-                  const timeRangeStr = h.start_time && h.end_time
-                    ? `${formatShortTime(h.start_time)} - ${formatShortTime(h.end_time)}`
-                    : '—';
-
-                  return (
-                    <tr
-                      key={`slot-${idx}`}
-                      className={`transition-colors ${status.rowBg}`}
-                      style={{ perspective: 1000 }}
-                    >
-                      {/* 1. Hospital Code */}
-                      <td className="py-3.5 px-2.5 font-mono font-black text-xs sm:text-sm lg:text-base text-slate-900 dark:text-white truncate">
-                        <motion.div
-                          key={`code-${currentPage}-${h.hospital_id}`}
-                          initial={{ opacity: 0, rotateX: -90, y: -4 }}
-                          animate={{ opacity: 1, rotateX: 0, y: 0 }}
-                          transition={{ duration: 0.36, delay: idx * 0.08, ease: [0.23, 1, 0.32, 1] }}
-                          style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
-                        >
-                          <CopyButton text={h.hospital_id} />
-                        </motion.div>
-                      </td>
-
-                      {/* 2. Hospital Name */}
-                      <td className="py-3.5 px-2.5 font-black text-slate-900 dark:text-white text-xs sm:text-sm lg:text-base">
-                        <motion.div
-                          key={`name-${currentPage}-${h.hospital_id}`}
-                          initial={{ opacity: 0, rotateX: -90, y: -4 }}
-                          animate={{ opacity: 1, rotateX: 0, y: 0 }}
-                          transition={{ duration: 0.36, delay: idx * 0.08, ease: [0.23, 1, 0.32, 1] }}
-                          style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
-                        >
-                          <Link
-                            to={`/hospitals/${h.hospital_id}`}
-                            className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate block"
-                            title={h.hospital_name}
-                          >
-                            {h.hospital_name}
-                          </Link>
-                        </motion.div>
-                      </td>
-
-                      {/* 3. Last Received - Time and Date without Seconds or Ellipsis */}
-                      <td className="py-3.5 px-2.5 font-mono text-xs sm:text-sm lg:text-base text-slate-800 dark:text-slate-100 font-extrabold whitespace-nowrap">
-                        <motion.div
-                          key={`ts-${currentPage}-${h.hospital_id}`}
-                          initial={{ opacity: 0, rotateX: -90, y: -4 }}
-                          animate={{ opacity: 1, rotateX: 0, y: 0 }}
-                          transition={{ duration: 0.36, delay: idx * 0.08, ease: [0.23, 1, 0.32, 1] }}
-                          style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
-                        >
-                          {formatTimestamp(h.received_at || h.start_time)}
-                        </motion.div>
-                      </td>
-
-                      {/* 4. Delay */}
-                      <td className={`py-3.5 px-2.5 font-mono font-black text-right text-xs sm:text-sm lg:text-base truncate ${status.textColor}`}>
-                        <motion.div
-                          key={`delay-${currentPage}-${h.hospital_id}`}
-                          initial={{ opacity: 0, rotateX: -90, y: -4 }}
-                          animate={{ opacity: 1, rotateX: 0, y: 0 }}
-                          transition={{ duration: 0.36, delay: idx * 0.08, ease: [0.23, 1, 0.32, 1] }}
-                          style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
-                        >
-                          {formatDelay(h.calculatedDelay)}
-                        </motion.div>
-                      </td>
-
-                      {/* 5. Status with BIG POPUP ANIMATION for CRITICAL */}
-                      <td className="py-3 px-2 text-center overflow-visible">
-                        <motion.div
-                          key={`status-${currentPage}-${h.hospital_id}`}
-                          initial={{ opacity: 0, rotateX: -90, scale: 0.9 }}
-                          animate={{ opacity: 1, rotateX: 0, scale: 1 }}
-                          transition={{ duration: 0.36, delay: idx * 0.08, ease: [0.23, 1, 0.32, 1] }}
-                          style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
-                        >
-                          {isCrit ? (
-                            <motion.div
-                              animate={{
-                                scale: [1, 1.04, 1],
-                                boxShadow: [
-                                  '0 0 0 0 rgba(239, 68, 68, 0.45)',
-                                  '0 0 0 5px rgba(239, 68, 68, 0)',
-                                  '0 0 0 0 rgba(239, 68, 68, 0.45)'
-                                ]
-                              }}
-                              transition={{
-                                duration: 1.4,
-                                repeat: Infinity,
-                                ease: 'easeInOut'
-                              }}
-                              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-black uppercase tracking-wider bg-rose-600 text-white shadow-md shadow-rose-600/30 border border-rose-300"
-                            >
-                              <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                              <span>CRITICAL</span>
-                            </motion.div>
-                          ) : isDelayed ? (
-                            <div className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-400 dark:border-amber-700 shadow-sm">
-                              <span className="w-2 h-2 rounded-full bg-amber-500" />
-                              <span>DELAYED</span>
-                            </div>
-                          ) : (
-                            <div className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-400 dark:border-emerald-700 shadow-sm">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                              <span>RECEIVING</span>
-                            </div>
-                          )}
-                        </motion.div>
-                      </td>
-
-                      {/* 6. Processed Rows */}
-                      <td className="py-3.5 px-3 font-mono font-black text-right text-slate-900 dark:text-white text-xs sm:text-sm lg:text-base truncate">
-                        <motion.div
-                          key={`rows-${currentPage}-${h.hospital_id}`}
-                          initial={{ opacity: 0, rotateX: -90, y: -4 }}
-                          animate={{ opacity: 1, rotateX: 0, y: 0 }}
-                          transition={{ duration: 0.36, delay: idx * 0.08, ease: [0.23, 1, 0.32, 1] }}
-                          style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
-                        >
-                          {(h.record_count ?? h.records_processed ?? 0).toLocaleString()} <span className="text-[11px] font-normal text-slate-400">rows</span>
-                        </motion.div>
-                      </td>
-
-                      {/* 7. Process Duration (Avg seconds & Start - End timestamps) */}
-                      <td className="py-3.5 px-3 font-mono text-right truncate">
-                        <motion.div
-                          key={`dur-${currentPage}-${h.hospital_id}`}
-                          initial={{ opacity: 0, rotateX: -90, y: -4 }}
-                          animate={{ opacity: 1, rotateX: 0, y: 0 }}
-                          transition={{ duration: 0.36, delay: idx * 0.08, ease: [0.23, 1, 0.32, 1] }}
-                          style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
-                        >
-                          <div className="font-black text-slate-900 dark:text-white text-xs sm:text-sm lg:text-base">
-                            {durationStr}
-                          </div>
-                          <div className="text-[11px] text-slate-400 font-bold truncate">
-                            {timeRangeStr}
-                          </div>
-                        </motion.div>
-                      </td>
-
-                      {/* 8. Data Structure */}
-                      <td className="py-3.5 px-3 text-center truncate">
-                        <motion.div
-                          key={`ds-${currentPage}-${h.hospital_id}`}
-                          initial={{ opacity: 0, rotateX: -90, y: -4 }}
-                          animate={{ opacity: 1, rotateX: 0, y: 0 }}
-                          transition={{ duration: 0.36, delay: idx * 0.08, ease: [0.23, 1, 0.32, 1] }}
-                          style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
-                        >
-                          <span
-                            className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-black font-mono text-[11px] sm:text-xs inline-block truncate max-w-full"
-                            title={h.data_structure || h.data_type}
-                          >
-                            {h.data_structure || h.data_type || 'ALL'}
-                          </span>
-                        </motion.div>
-                      </td>
-
-                      {/* 9. Service Name */}
-                      <td className="py-3.5 px-3 font-mono text-xs sm:text-sm text-slate-700 dark:text-slate-300 font-extrabold truncate" title={h.service_name || 'GENERAL Process Data Entities'}>
-                        <motion.div
-                          key={`service-${currentPage}-${h.hospital_id}`}
-                          initial={{ opacity: 0, rotateX: -90, y: -4 }}
-                          animate={{ opacity: 1, rotateX: 0, y: 0 }}
-                          transition={{ duration: 0.36, delay: idx * 0.08, ease: [0.23, 1, 0.32, 1] }}
-                          style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
-                        >
-                          {h.service_name || 'GENERAL Process Data Entities'}
-                        </motion.div>
-                      </td>
-
-                      {/* 10. Ingestion Trend Line Graph */}
-                      <td className="py-3.5 px-3 text-center align-middle">
-                        <motion.div
-                          key={`trend-${currentPage}-${h.hospital_id}`}
-                          initial={{ opacity: 0, scaleY: 0.2 }}
-                          animate={{ opacity: 1, scaleY: 1 }}
-                          transition={{ duration: 0.36, delay: idx * 0.08, ease: [0.23, 1, 0.32, 1] }}
-                          style={{ transformOrigin: 'center center' }}
-                        >
-                          <IngestionSparkline points={h.sparklinePoints} isCritical={isCrit} />
-                        </motion.div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer Info */}
-        <div className="p-3 sm:p-4 bg-slate-50 dark:bg-slate-900/80 border-t-2 border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs sm:text-sm text-slate-500 font-mono gap-2">
-          <div>
-            Showing <strong className="text-slate-900 dark:text-white">{startIndex + 1}–{endIndex}</strong> of <strong className="text-slate-900 dark:text-white">{sortedHospitals.length}</strong> hospitals (Page {currentPage + 1} of {totalPages})
-          </div>
-          <div className="flex items-center gap-4 text-xs font-black">
-            <span className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" /> &gt;{activeGlobalThresh.delayedMaxMinutes}m: Critical
-            </span>
-            <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> {activeGlobalThresh.receivingMaxMinutes + 1}–{activeGlobalThresh.delayedMaxMinutes}m: Delayed
-            </span>
-            <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> ≤{activeGlobalThresh.receivingMaxMinutes}m: Receiving
-            </span>
-          </div>
-        </div>
-      </Card>
       </div>
     </motion.div>
   );

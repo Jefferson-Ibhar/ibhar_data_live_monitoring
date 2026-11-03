@@ -17,9 +17,17 @@ export const NotificationSettingsPage: React.FC = () => {
   const [monthlyBudget, setMonthlyBudget] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('ibhar_aws_monthly_budget');
-      return saved ? parseFloat(saved) : 2800;
+      if (saved) {
+        const val = parseFloat(saved);
+        if (val === 2800) {
+          localStorage.setItem('ibhar_aws_monthly_budget', '680');
+          return 680;
+        }
+        return isNaN(val) ? 680 : val;
+      }
+      return 680;
     } catch {
-      return 2800;
+      return 680;
     }
   });
   const [budgetSavedToast, setBudgetSavedToast] = useState(false);
@@ -182,7 +190,7 @@ export const NotificationSettingsPage: React.FC = () => {
                 Quick Preset Targets:
               </label>
               <div className="flex flex-wrap gap-2">
-                {[1500, 2000, 2500, 2800, 3500, 5000].map((val) => (
+                {[500, 550, 600, 650, 700].map((val) => (
                   <button
                     key={val}
                     type="button"
