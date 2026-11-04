@@ -143,17 +143,53 @@ export const apiService = {
         status: a.status || 'ACTIVE'
       }));
 
-      if (!filterType || filterType === 'all') return mappedAlerts;
-      return mappedAlerts.filter(a => a.type === filterType.toLowerCase() || a.severity?.toLowerCase() === filterType.toLowerCase());
+      const TWENTY_DAYS_MS = 20 * 24 * 60 * 60 * 1000;
+      const nowMs = Date.now();
+      const validAlerts = mappedAlerts.filter(a => {
+        if (!a.timestamp) return true;
+        const t = new Date(a.timestamp).getTime();
+        return isNaN(t) || (nowMs - t) <= TWENTY_DAYS_MS;
+      });
+
+      if (!filterType || filterType === 'all') return validAlerts;
+      return validAlerts.filter(a => a.type === filterType.toLowerCase() || a.severity?.toLowerCase() === filterType.toLowerCase());
     }
     return [];
   },
 
   async markAlertAsRead(alertId: string): Promise<boolean> {
-    const result = await fetchFromBackend<{ status: string }>(`/alerts/${alertId}/read/`, {
-      method: 'POST'
+    const [res1, res2] = await Promise.all([
+      fetchFromBackend<{ status: string }>(`/alerts/${alertId}/read/`, { method: 'POST' }),
+      fetchFromBackend<any>('/alerts/acknowledge/', {
+        method: 'POST',
+        body: JSON.stringify({ alert_id: alertId })
+      })
+    ]);
+    return res1 !== null || res2 !== null;
+  },
+
+  async getAcknowledgedAlertIds(): Promise<string[]> {
+    const res = await fetchFromBackend<any>('/alerts/acknowledged/');
+    if (res && res.success !== false && Array.isArray(res.acknowledged_ids)) {
+      return res.acknowledged_ids;
+    }
+    return [];
+  },
+
+  async acknowledgeAlert(alertId: string, hospitalCode?: string): Promise<boolean> {
+    const res = await fetchFromBackend<any>('/alerts/acknowledge/', {
+      method: 'POST',
+      body: JSON.stringify({ alert_id: alertId, hospital_code: hospitalCode })
     });
-    return result !== null;
+    return res && res.success !== false;
+  },
+
+  async acknowledgeMultipleAlerts(alertIds: string[]): Promise<boolean> {
+    const res = await fetchFromBackend<any>('/alerts/acknowledge/', {
+      method: 'POST',
+      body: JSON.stringify({ alert_ids: alertIds })
+    });
+    return res && res.success !== false;
   },
 
   async getDashboard(): Promise<DashboardMetrics | null> {

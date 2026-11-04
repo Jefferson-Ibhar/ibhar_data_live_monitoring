@@ -458,6 +458,19 @@ class AWSCostProvider(CostProvider):
             except (ValueError, TypeError):
                 yesterday_cost = 0.0
 
+        # Day before yesterday's finalized cost (T - 2 days)
+        day_before_yesterday_str = (now.date() - timedelta(days=2)).strftime("%Y-%m-%d")
+        day_before_yesterday_entry = next((d for d in all_daily if d.get("TimePeriod", {}).get("Start") == day_before_yesterday_str), None)
+        if not day_before_yesterday_entry and len(all_daily) >= 3:
+            day_before_yesterday_entry = all_daily[-3] if all_daily[-1].get("TimePeriod", {}).get("Start") == today_str else all_daily[-2]
+
+        day_before_yesterday_cost = 0.0
+        if day_before_yesterday_entry and "Total" in day_before_yesterday_entry:
+            try:
+                day_before_yesterday_cost = float(day_before_yesterday_entry["Total"]["UnblendedCost"].get("Amount", 0.0))
+            except (ValueError, TypeError):
+                day_before_yesterday_cost = 0.0
+
         # 2. Hourly Burn Rate (Estimated)
         # Hours elapsed today in UTC
         hours_elapsed = now.hour + (now.minute / 60.0)
@@ -479,6 +492,7 @@ class AWSCostProvider(CostProvider):
             "current_hourly_rate_is_estimate": True,
             "today_cost": round(today_cost, 2),
             "yesterday_cost": round(yesterday_cost, 2),
+            "day_before_yesterday_cost": round(day_before_yesterday_cost, 2),
             "mtd_cost": float(forecast.get("Budget", {}).get("ActualSpend", {}).get("Amount", 0.0)),
             "forecast_cost": float(forecast.get("Total", {}).get("Amount", 0.0)),
             "budget_limit": float(forecast.get("Budget", {}).get("BudgetLimit", {}).get("Amount", 0.0)),

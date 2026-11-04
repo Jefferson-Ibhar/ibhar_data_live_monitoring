@@ -259,3 +259,17 @@ class Alert(models.Model):
     def __str__(self):
         return f"Alert {self.id} - {self.alert_type or self.title} ({self.status})"
 
+
+class AlertAcknowledgment(models.Model):
+    alert_id = models.CharField(max_length=255, primary_key=True)
+    hospital_code = models.CharField(max_length=50, blank=True, null=True)
+    acknowledged_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'alert_acknowledgments'
+        managed = IS_MANAGED
+
+    def __str__(self):
+        return f"Acknowledgment for {self.alert_id} at {self.acknowledged_at}"
+
+

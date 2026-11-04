@@ -161,11 +161,13 @@ def determine_hospital_status(
     return "healthy"
 
 
-def extract_latest_errors(records: List[Dict[str, Any]], limit: int = 10) -> List[Dict[str, Any]]:
+def extract_latest_errors(records: List[Dict[str, Any]], limit: int = 10, max_age_days: int = HISTORY_RETENTION_DAYS) -> List[Dict[str, Any]]:
     """
     Extracts all errors where ProcessStatus == "ERROR" or ErrorText is present.
     Preserves exact ErrorText, InsertSQL, UpdateSQL, GeneralSQL and sorts by time descending.
+    Filters out and purges any errors older than max_age_days (20 days).
     """
+    now = timezone.now()
     error_items = []
     for r in records:
         error_text = str(r.get("ErrorText") or "").strip()
@@ -173,6 +175,9 @@ def extract_latest_errors(records: List[Dict[str, Any]], limit: int = 10) -> Lis
         if proc_status == "ERROR" or (error_text and error_text.lower() != "null"):
             raw_time = r.get("StartTime") or r.get("EndTime") or None
             parsed_dt = parse_sync_timestamp(raw_time) if raw_time else None
+            # Discard errors older than 20 days
+            if parsed_dt and (now - parsed_dt).total_seconds() > max_age_days * 86400:
+                continue
             error_items.append({
                 "data_structure": str(r.get("DataStructureName") or ""),
                 "error_text": error_text or "Unknown sync error",
@@ -940,12 +945,18 @@ def get_live_integration_health(filters: Optional[Dict[str, Any]] = None) -> Dic
     # Sort hospital list alphabetically
     hospital_ingestion_list.sort(key=lambda x: x["hospital_name"])
 
-    # Extract all live errors from the dataset
+    # Extract all live errors from the dataset (purging older than HISTORY_RETENTION_DAYS)
     issues_list = []
+    now = timezone.now()
     for r in raw_records:
         p_st = str(r.get("ProcessStatus") or "").upper()
         err_t = str(r.get("ErrorText") or "").strip()
         if p_st == "ERROR" or (err_t and err_t.lower() != "null"):
+            raw_time = r.get("StartTime") or r.get("EventDate")
+            parsed_dt = parse_sync_timestamp(raw_time) if raw_time else None
+            # Discard errors older than 20 days
+            if parsed_dt and (now - parsed_dt).total_seconds() > HISTORY_RETENTION_DAYS * 86400:
+                continue
             h_code = str(r.get("HospitalCode") or "UNKNOWN").strip()
             h_name = str(r.get("HospitalName") or h_code).strip()
             issues_list.append({

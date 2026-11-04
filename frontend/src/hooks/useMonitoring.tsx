@@ -276,7 +276,8 @@ export const MonitoringProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         encountersRes,
         dischargesRes,
         ingestionRes,
-        healthRes
+        healthRes,
+        serverAckIds
       ] = await Promise.all([
         apiService.getLiveDashboard(),
         apiService.getHospitals(),
@@ -285,7 +286,8 @@ export const MonitoringProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         apiService.getEncounters(),
         apiService.getDischarges(),
         apiService.getIngestionLogs(),
-        apiService.getIntegrationHealth(dateFilters)
+        apiService.getIntegrationHealth(dateFilters),
+        apiService.getAcknowledgedAlertIds().catch(() => [])
       ]);
 
       const now = new Date();
@@ -374,12 +376,38 @@ export const MonitoringProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       // Alerts stream: Live REST API sync errors only (past Supabase alerts removed)
+      // Limit to 20 days max retention (older alerts are purged/deleted)
       const liveAlerts: Alert[] = [];
+      const nowMs = Date.now();
+      const TWENTY_DAYS_MS = 20 * 24 * 60 * 60 * 1000;
+      const serverAckSet = new Set<string>(Array.isArray(serverAckIds) ? serverAckIds : []);
+      // Baseline timestamp for existing alerts (all existing alerts on or before this time are acknowledged)
+      const BASELINE_ACK_TIMESTAMP = new Date('2026-11-04T12:05:00Z').getTime();
+
       if (liveRes && liveRes.hospitals) {
         liveRes.hospitals.forEach((h, hIdx) => {
           (h.latest_errors || []).forEach((err, errIdx) => {
+            const rawTime = err.time;
+            let parsedTime: Date | null = null;
+            if (rawTime) {
+              parsedTime = parseDateComponents(rawTime) || new Date(rawTime);
+              if (parsedTime && !isNaN(parsedTime.getTime())) {
+                const ageMs = nowMs - parsedTime.getTime();
+                if (ageMs > TWENTY_DAYS_MS) {
+                  // Discard/purge alerts older than 20 days
+                  return;
+                }
+              }
+            }
+
+            const alertId = `live-alert-${h.hospital_code}-${hIdx}-${errIdx}`;
+            const timeMs = parsedTime && !isNaN(parsedTime.getTime()) ? parsedTime.getTime() : 0;
+            // Existing alerts on or before the baseline deployment are marked acknowledged
+            const isPreExisting = timeMs > 0 && timeMs <= BASELINE_ACK_TIMESTAMP;
+            const isAck = isPreExisting || serverAckSet.has(alertId) || Boolean(err.is_acknowledged);
+
             liveAlerts.push({
-              id: `live-alert-${h.hospital_code}-${hIdx}-${errIdx}`,
+              id: alertId,
               hospitalId: h.hospital_code,
               hospitalName: h.hospital_name || h.hospital_code,
               type: 'critical',
@@ -388,9 +416,9 @@ export const MonitoringProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               timestamp: err.time || new Date().toISOString(),
               lastReceived: h.last_synced_at || '',
               category: err.data_structure || 'IN_PATIENT_INFO',
-              isRead: false,
+              isRead: isAck,
               severity: 'CRITICAL',
-              status: 'ACTIVE',
+              status: isAck ? 'ACKNOWLEDGED' : 'ACTIVE',
               insert_sql: err.insert_sql,
               update_sql: err.update_sql,
               general_sql: err.general_sql,
@@ -532,7 +560,9 @@ export const MonitoringProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const manualRefresh = () => performLiveUpdate();
 
   const markAlertAsRead = async (alertId: string) => {
-    setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, isRead: true } : a));
+    setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, isRead: true, status: 'ACKNOWLEDGED' } : a));
+    // Persist global server-side acknowledgment across all browsers/TVs
+    await apiService.acknowledgeAlert(alertId);
     if (!alertId.startsWith('live-alert-')) {
       await apiService.markAlertAsRead(alertId);
     }

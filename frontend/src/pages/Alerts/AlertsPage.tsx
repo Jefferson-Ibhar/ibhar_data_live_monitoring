@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useMonitoring } from '../../hooks/useMonitoring';
+import { apiService } from '../../services/api';
 import { AlertCard } from '../../components/alerts/AlertCard';
 import { EmptyState } from '../../components/common/EmptyState';
 import { BellRing, CheckCheck } from 'lucide-react';
@@ -22,7 +23,7 @@ export const AlertsPage: React.FC = () => {
             TELEMETRY ALERTS
           </h2>
           <p className="text-xs text-textLight-secondary dark:text-textNight-secondary font-sans mt-0.5">
-            Real-time automated incident and sync error notifications
+            Real-time automated incident and sync error notifications (last 20 days)
           </p>
         </div>
 
@@ -34,7 +35,10 @@ export const AlertsPage: React.FC = () => {
 
           {alerts.length > 0 && (
             <button
-              onClick={() => alerts.forEach(a => markAlertAsRead(a.id))}
+              onClick={() => {
+                alerts.forEach(a => markAlertAsRead(a.id));
+                apiService.acknowledgeMultipleAlerts(alerts.map(a => a.id));
+              }}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-nude-peachTint/70 dark:bg-night-cardElevated text-xs font-cute font-bold text-textLight-heading dark:text-textNight-heading border border-[#E8A982]/40 hover:bg-nude-peachTint dark:hover:bg-night-cardSoft transition-all shadow-sm cursor-pointer"
             >
               <CheckCheck className="w-4 h-4 text-[#91A995]" />

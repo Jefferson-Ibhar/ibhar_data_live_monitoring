@@ -1,3 +1,4 @@
+import datetime
 from django.db import connection
 from django.db.models import Q, Count, Avg, Sum
 from django.utils import timezone
@@ -6,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 
-from .models import Hospital, Encounter, Discharge, DataIngestionLog, Alert
+from .models import Hospital, Encounter, Discharge, DataIngestionLog, Alert, AlertAcknowledgment
 from .serializers import (
     HospitalSerializer,
     EncounterSerializer,
@@ -378,6 +379,10 @@ class AlertListView(APIView):
     """
     @extend_schema(summary="List alerts")
     def get(self, request):
+        # Automatically purge/delete alerts older than 20 days
+        cutoff_date = timezone.now() - datetime.timedelta(days=20)
+        Alert.objects.filter(detected_at__lt=cutoff_date).delete()
+
         queryset = Alert.objects.all()
 
         hospital_id = request.query_params.get('hospital_id')
@@ -482,6 +487,54 @@ class AlertDetailView(APIView):
                     "message": f"Alert {pk} was not found."
                 }
             }, status=status.HTTP_404_NOT_FOUND)
+
+
+class AlertAcknowledgeView(APIView):
+    """
+    POST /api/alerts/acknowledge/ - Record server-side alert acknowledgment.
+    GET /api/alerts/acknowledged/ - Return list of all server-acknowledged alert IDs.
+    """
+    @extend_schema(summary="Get acknowledged alert IDs")
+    def get(self, request):
+        cutoff = timezone.now() - datetime.timedelta(days=20)
+        AlertAcknowledgment.objects.filter(acknowledged_at__lt=cutoff).delete()
+        ack_ids = list(AlertAcknowledgment.objects.values_list('alert_id', flat=True))
+        return Response({
+            "success": True,
+            "acknowledged_ids": ack_ids
+        }, status=status.HTTP_200_OK)
+
+    @extend_schema(summary="Acknowledge alerts globally")
+    def post(self, request):
+        cutoff = timezone.now() - datetime.timedelta(days=20)
+        AlertAcknowledgment.objects.filter(acknowledged_at__lt=cutoff).delete()
+
+        alert_id = request.data.get('alert_id')
+        alert_ids = request.data.get('alert_ids', [])
+        hospital_code = request.data.get('hospital_code', '')
+
+        ids_to_ack = []
+        if alert_id:
+            ids_to_ack.append(str(alert_id).strip())
+        if isinstance(alert_ids, list):
+            for i in alert_ids:
+                if i:
+                    ids_to_ack.append(str(i).strip())
+
+        for aid in set(ids_to_ack):
+            AlertAcknowledgment.objects.get_or_create(
+                alert_id=aid,
+                defaults={'hospital_code': hospital_code}
+            )
+            try:
+                Alert.objects.filter(pk=aid).update(status='ACKNOWLEDGED')
+            except Exception:
+                pass
+
+        return Response({
+            "success": True,
+            "acknowledged_count": len(ids_to_ack)
+        }, status=status.HTTP_200_OK)
 
 
 class DashboardView(APIView):

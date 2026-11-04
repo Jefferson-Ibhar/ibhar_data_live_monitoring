@@ -15,6 +15,7 @@ from .views import (
     IntegrationHealthTrendView,
     AlertListView,
     AlertDetailView,
+    AlertAcknowledgeView,
     DashboardView,
     AnalyticsView,
     ReportsOverviewView,
@@ -57,6 +58,8 @@ urlpatterns = [
 
     # Alert APIs
     path('alerts/', AlertListView.as_view(), name='alert-list'),
+    path('alerts/acknowledge/', AlertAcknowledgeView.as_view(), name='alert-acknowledge'),
+    path('alerts/acknowledged/', AlertAcknowledgeView.as_view(), name='alert-acknowledged'),
     path('alerts/<int:pk>/', AlertDetailView.as_view(), name='alert-detail'),
     path('alerts/<int:pk>/read/', AlertDetailView.as_view(), name='alert-read'),
 

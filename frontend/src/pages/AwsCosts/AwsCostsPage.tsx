@@ -308,26 +308,35 @@ export const AwsCostsPage: React.FC = () => {
   const forecastCost = Number(summary?.forecast_cost ?? 2450.00);
   const hourlyRate = Number(summary?.current_hourly_rate ?? 2.85);
 
-  // Derive Yesterday's spend (most recent full finalized day)
-  const { yesterdayCost, yesterdayLabel } = (() => {
-    if (summary?.yesterday_cost !== undefined && summary?.yesterday_cost !== null && Number(summary.yesterday_cost) > 0) {
-      return { yesterdayCost: Number(summary.yesterday_cost), yesterdayLabel: 'Yesterday' };
-    }
+  // Derive Day Before Yesterday's spend (most recent full finalized 24-hr cycle before yesterday)
+  const { dayBeforeYesterdayCost, dayBeforeYesterdayLabel } = (() => {
     if (dailyData && dailyData.length > 0) {
       const todayIso = new Date().toISOString().split('T')[0];
       const pastEntries = dailyData.filter((d: any) => {
         const start = d.TimePeriod?.Start || '';
         return start < todayIso;
       });
-      const targetEntry = pastEntries.length > 0 ? pastEntries[pastEntries.length - 1] : dailyData[dailyData.length - 1];
-      const amt = Number(targetEntry?.Total?.UnblendedCost?.Amount || 0);
-      const startDt = targetEntry?.TimePeriod?.Start ? new Date(targetEntry.TimePeriod.Start) : null;
-      const label = startDt && !isNaN(startDt.getTime())
-        ? `${monthNames[startDt.getMonth()]} ${startDt.getDate()}`
-        : 'Yesterday';
-      return { yesterdayCost: amt, yesterdayLabel: label };
+      // pastEntries is sorted chronologically: [..., dayBeforeYesterday, yesterday]
+      const targetEntry = pastEntries.length >= 2
+        ? pastEntries[pastEntries.length - 2]
+        : (pastEntries.length === 1 ? pastEntries[0] : dailyData[0]);
+
+      if (targetEntry) {
+        const amt = Number(targetEntry?.Total?.UnblendedCost?.Amount || 0);
+        const startDt = targetEntry?.TimePeriod?.Start ? new Date(targetEntry.TimePeriod.Start) : null;
+        const label = startDt && !isNaN(startDt.getTime())
+          ? `${monthNames[startDt.getMonth()]} ${startDt.getDate()}`
+          : 'Day before yesterday';
+        return { dayBeforeYesterdayCost: amt, dayBeforeYesterdayLabel: label };
+      }
     }
-    return { yesterdayCost: Number(summary?.today_cost ?? 22.77), yesterdayLabel: 'Yesterday' };
+    if (summary?.day_before_yesterday_cost !== undefined && summary?.day_before_yesterday_cost !== null && Number(summary.day_before_yesterday_cost) > 0) {
+      return { dayBeforeYesterdayCost: Number(summary.day_before_yesterday_cost), dayBeforeYesterdayLabel: 'Day before yesterday' };
+    }
+    if (summary?.yesterday_cost !== undefined && summary?.yesterday_cost !== null && Number(summary.yesterday_cost) > 0) {
+      return { dayBeforeYesterdayCost: Number(summary.yesterday_cost), dayBeforeYesterdayLabel: 'Day before yesterday' };
+    }
+    return { dayBeforeYesterdayCost: Number(summary?.today_cost ?? 17.91), dayBeforeYesterdayLabel: 'Day before yesterday' };
   })();
 
   const ec2Resources = resources.filter((r: any) => r.type?.toLowerCase().includes('ec2'));
@@ -453,19 +462,19 @@ export const AwsCostsPage: React.FC = () => {
           </p>
         </div>
 
-        {/* KPI 2: Yesterday's Spend */}
+        {/* KPI 2: Day Before Yesterday's Spend */}
         <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs font-extrabold text-slate-500 dark:text-slate-400 mb-2">
-            <span>YESTERDAY'S SPEND</span>
+            <span>DAY BEFORE YESTERDAY</span>
             <Zap className="w-4 h-4 text-indigo-500" />
           </div>
           <div className="flex items-baseline gap-1 my-1">
             <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-              ${yesterdayCost.toFixed(2)}
+              ${dayBeforeYesterdayCost.toFixed(2)}
             </span>
           </div>
           <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-            {yesterdayLabel ? `${yesterdayLabel} finalized` : 'Full 24-hr finalized spend'}
+            {dayBeforeYesterdayLabel ? `${dayBeforeYesterdayLabel} finalized` : 'Day before yesterday finalized'}
           </p>
         </div>
 

@@ -259,9 +259,11 @@ export interface IntegrationHealthResponse {
 }
 
 export interface LiveError {
+  id?: string;
   data_structure: string;
   error_text: string;
   time: string | null;
+  is_acknowledged?: boolean;
   insert_sql?: string | null;
   update_sql?: string | null;
   general_sql?: string | null;

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, ArrowRight, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { soundAlert } from '../../utils/soundAlert';
+import { apiService } from '../../services/api';
 import type { Alert } from '../../types';
 import notificationBgVideo from '../../assets/Notification_background.mp4';
 
@@ -62,10 +63,27 @@ export const EmergencyAlertModal: React.FC<EmergencyAlertModalProps> = ({
     };
   }, []);
 
-  // Find the latest unacknowledged critical alert
+  // Only alert the emergency pop-up if the alert timestamp is within the last 3 days (<= 72 hours)
+  const isEligibleForEmergencyPopup = (alert: Alert): boolean => {
+    if (alert.id.startsWith('test-emergency-')) return true;
+    if (!alert.timestamp) return false;
+    const alertDate = new Date(alert.timestamp);
+    const timeMs = alertDate.getTime();
+    if (isNaN(timeMs)) return false;
+    const ageMs = Date.now() - timeMs;
+    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+    // Allow fresh alerts up to 3 days old (silence older historical errors > 3 days)
+    return ageMs <= THREE_DAYS_MS;
+  };
+
+  // Find the latest unacknowledged critical alert from the last 3 days
   useEffect(() => {
     const unacknowledged = alerts.filter(
-      a => !acknowledgedIds.has(a.id) && !a.isRead && (a.severity === 'CRITICAL' || a.type === 'critical' || a.status === 'ACTIVE')
+      a =>
+        !acknowledgedIds.has(a.id) &&
+        !a.isRead &&
+        (a.severity === 'CRITICAL' || a.type === 'critical' || a.status === 'ACTIVE') &&
+        isEligibleForEmergencyPopup(a)
     );
 
     if (unacknowledged.length > 0) {
@@ -102,6 +120,11 @@ export const EmergencyAlertModal: React.FC<EmergencyAlertModalProps> = ({
       try {
         localStorage.setItem('ibhar_acknowledged_emergency_alerts', JSON.stringify(Array.from(updated)));
       } catch {}
+
+      // Persist global server-side acknowledgment across all browsers/TVs
+      if (!activeAlert.id.startsWith('test-emergency-')) {
+        apiService.acknowledgeAlert(activeAlert.id, activeAlert.hospitalId);
+      }
 
       if (onAcknowledgeAlert) {
         onAcknowledgeAlert(activeAlert.id);
@@ -178,6 +201,7 @@ export const EmergencyAlertModal: React.FC<EmergencyAlertModalProps> = ({
                 </span>
                 {activeAlert.timestamp && (
                   <span className="font-mono text-xs text-slate-400">
+                    {new Date(activeAlert.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}{' '}
                     {new Date(activeAlert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
