@@ -161,7 +161,7 @@ export const LivePage: React.FC = () => {
         const headerHeight = headerEl ? headerEl.getBoundingClientRect().height : 72;
         const rect = kpiContainerRef.current.getBoundingClientRect();
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const targetTop = rect.top + scrollTop - headerHeight - 12;
+        const targetTop = rect.top + scrollTop - headerHeight - 10;
 
         window.scrollTo({
           top: Math.max(0, targetTop),
@@ -175,10 +175,13 @@ export const LivePage: React.FC = () => {
     timeoutId = setTimeout(scrollToKpi, 80);
     timeoutId2 = setTimeout(scrollToKpi, 250);
 
+    window.addEventListener('resize', scrollToKpi);
+
     return () => {
       cancelAnimationFrame(frameId);
       clearTimeout(timeoutId);
       clearTimeout(timeoutId2);
+      window.removeEventListener('resize', scrollToKpi);
     };
   }, []);
 
@@ -570,11 +573,11 @@ export const LivePage: React.FC = () => {
       </div>
 
       {/* KPI Status Strip - TV Bold Numbers (UNTOUCHED) */}
-      <div ref={kpiContainerRef} id="live-kpi-section" className="grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3">
+      <div ref={kpiContainerRef} id="live-kpi-section" className="grid grid-cols-2 md:grid-cols-5 gap-2 sm:gap-2.5">
         {/* Critical Priority Card */}
         <div
           onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'CRITICAL' ? 'ALL' : 'CRITICAL')}
-          className={`p-3.5 sm:p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+          className={`p-3 sm:p-3.5 xl:p-4 rounded-2xl border-2 transition-all cursor-pointer ${
             selectedStatusFilter === 'CRITICAL'
               ? 'bg-rose-50 dark:bg-rose-950/70 border-rose-500 shadow-md ring-2 ring-rose-500/20'
               : 'bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 hover:border-rose-300'
@@ -587,7 +590,7 @@ export const LivePage: React.FC = () => {
             </span>
             <ShieldAlert className="w-5 h-5 text-rose-600 dark:text-rose-400" />
           </div>
-          <div className="font-heading font-black text-2xl sm:text-3xl lg:text-4xl text-rose-600 dark:text-rose-400">
+          <div className="font-heading font-black text-2xl sm:text-3xl xl:text-4xl text-rose-600 dark:text-rose-400">
             {criticalCount}
           </div>
           <p className="text-[11px] text-slate-400 font-extrabold mt-0.5">
@@ -598,7 +601,7 @@ export const LivePage: React.FC = () => {
         {/* Delayed Card */}
         <div
           onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'DELAYED' ? 'ALL' : 'DELAYED')}
-          className={`p-3.5 sm:p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+          className={`p-3 sm:p-3.5 xl:p-4 rounded-2xl border-2 transition-all cursor-pointer ${
             selectedStatusFilter === 'DELAYED'
               ? 'bg-amber-50 dark:bg-amber-950/70 border-amber-500 shadow-md ring-2 ring-amber-500/20'
               : 'bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 hover:border-amber-300'
@@ -611,7 +614,7 @@ export const LivePage: React.FC = () => {
             </span>
             <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
           </div>
-          <div className="font-heading font-black text-2xl sm:text-3xl lg:text-4xl text-amber-600 dark:text-amber-400">
+          <div className="font-heading font-black text-2xl sm:text-3xl xl:text-4xl text-amber-600 dark:text-amber-400">
             {delayedCount}
           </div>
           <p className="text-[11px] text-slate-400 font-extrabold mt-0.5">
@@ -622,7 +625,7 @@ export const LivePage: React.FC = () => {
         {/* Receiving Card */}
         <div
           onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'RECEIVING' ? 'ALL' : 'RECEIVING')}
-          className={`p-3.5 sm:p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+          className={`p-3 sm:p-3.5 xl:p-4 rounded-2xl border-2 transition-all cursor-pointer ${
             selectedStatusFilter === 'RECEIVING'
               ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-500 shadow-md ring-2 ring-emerald-500/20'
               : 'bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 hover:border-emerald-300'
@@ -635,7 +638,7 @@ export const LivePage: React.FC = () => {
             </span>
             <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <div className="font-heading font-black text-2xl sm:text-3xl lg:text-4xl text-emerald-600 dark:text-emerald-400">
+          <div className="font-heading font-black text-2xl sm:text-3xl xl:text-4xl text-emerald-600 dark:text-emerald-400">
             {receivingCount}
           </div>
           <p className="text-[11px] text-slate-400 font-extrabold mt-0.5">
@@ -646,7 +649,7 @@ export const LivePage: React.FC = () => {
         {/* Total Nodes */}
         <div
           onClick={() => setSelectedStatusFilter('ALL')}
-          className={`p-3.5 sm:p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+          className={`p-3 sm:p-3.5 xl:p-4 rounded-2xl border-2 transition-all cursor-pointer ${
             selectedStatusFilter === 'ALL'
               ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-500 shadow-md ring-2 ring-blue-500/20'
               : 'bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 hover:border-blue-300'
@@ -658,7 +661,7 @@ export const LivePage: React.FC = () => {
             </span>
             <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
           </div>
-          <div className="font-heading font-black text-2xl sm:text-3xl lg:text-4xl text-slate-900 dark:text-white">
+          <div className="font-heading font-black text-2xl sm:text-3xl xl:text-4xl text-slate-900 dark:text-white">
             {enrichedLogs.length}
           </div>
           <p className="text-[11px] text-slate-400 font-extrabold mt-0.5">
@@ -667,7 +670,7 @@ export const LivePage: React.FC = () => {
         </div>
 
         {/* Processed Rows Total */}
-        <div className="p-3.5 sm:p-4 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/90 col-span-2 sm:col-span-1">
+        <div className="p-3 sm:p-3.5 xl:p-4 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/90 col-span-2 sm:col-span-1">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs sm:text-sm font-black uppercase text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
               Total Ingested Rows
@@ -686,15 +689,15 @@ export const LivePage: React.FC = () => {
       {/* 3-Column Section */}
       <div id="live-table-section" className="w-full -mt-1 sm:-mt-1.5">
         {/* 3 Columns Responsive Grid:
-            Column 1: Hospitals Receiving & Delayed Data (5 cols on xl - extended)
-            Column 2: Hospitals Critical Data (5 cols on xl)
-            Column 3: AWS Cost KPI Cards Stacked Vertically (2 cols on xl - compact)
+            Column 1: Hospitals Receiving & Delayed Data (5 cols on md/lg/xl - extended)
+            Column 2: Hospitals Critical Data (5 cols on md/lg/xl)
+            Column 3: AWS Cost KPI Cards Stacked Vertically (2 cols on md/lg/xl - compact)
         */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-3.5 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 sm:gap-3 items-start">
           {/* ======================================================================= */}
-          {/* COLUMN 1: HOSPITALS RECEIVING & DELAYED (lg: 6 cols, xl: 5 cols - EXTENDED) */}
+          {/* COLUMN 1: HOSPITALS RECEIVING & DELAYED (md/lg/xl: 5 cols - EXTENDED)    */}
           {/* ======================================================================= */}
-          <div className="lg:col-span-6 xl:col-span-5 flex flex-col">
+          <div className="col-span-1 md:col-span-5 flex flex-col">
             <Card className="p-0 overflow-hidden border-2 border-slate-200/90 dark:border-slate-800 shadow-xl flex flex-col bg-white dark:bg-slate-900 rounded-2xl">
               {/* Header */}
               <div className="p-3 border-b-2 border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 flex items-center justify-between gap-2">
@@ -744,13 +747,13 @@ export const LivePage: React.FC = () => {
               <div className="w-full overflow-hidden">
                 <table className="w-full table-fixed text-left border-collapse font-sans">
                   <thead>
-                    <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
-                      <th className="py-2.5 px-2 w-[18%]">HCcode</th>
-                      <th className="py-2.5 px-2 w-[28%]">Name</th>
-                      <th className="py-2.5 px-2 w-[18%]">Last Recv</th>
-                      <th className="py-2.5 px-1.5 w-[14%] text-center">Status</th>
-                      <th className="py-2.5 px-1.5 w-[11%] text-right">Rows</th>
-                      <th className="py-2.5 px-1.5 w-[11%] text-center">Trend</th>
+                    <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
+                      <th className="py-2 px-1.5 sm:py-2.5 sm:px-2 w-[18%]">HCcode</th>
+                      <th className="py-2 px-1.5 sm:py-2.5 sm:px-2 w-[28%]">Name</th>
+                      <th className="py-2 px-1.5 sm:py-2.5 sm:px-2 w-[18%]">Last Recv</th>
+                      <th className="py-2 px-1 sm:py-2.5 sm:px-1.5 w-[14%] text-center">Status</th>
+                      <th className="py-2 px-1 sm:py-2.5 sm:px-1.5 w-[11%] text-right">Rows</th>
+                      <th className="py-2 px-1 sm:py-2.5 sm:px-1.5 w-[11%] text-center">Trend</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-xs">
@@ -774,7 +777,7 @@ export const LivePage: React.FC = () => {
                             style={{ perspective: 1000 }}
                           >
                             {/* 1. HCcode */}
-                            <td className="py-2.5 px-2 font-mono font-black text-xs text-slate-900 dark:text-white truncate">
+                            <td className="py-2 px-1.5 sm:py-2.5 sm:px-2 font-mono font-black text-xs text-slate-900 dark:text-white truncate">
                               <motion.div
                                 key={`rd-code-${receivingDelayedPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -787,7 +790,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 2. Hospital Name */}
-                            <td className="py-2.5 px-2 font-black text-slate-900 dark:text-white text-xs">
+                            <td className="py-2 px-1.5 sm:py-2.5 sm:px-2 font-black text-slate-900 dark:text-white text-xs">
                               <motion.div
                                 key={`rd-name-${receivingDelayedPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -806,7 +809,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 3. Last Received */}
-                            <td className="py-2.5 px-2 font-mono text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                            <td className="py-2 px-1.5 sm:py-2.5 sm:px-2 font-mono text-[10px] sm:text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
                               <motion.div
                                 key={`rd-ts-${receivingDelayedPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -819,7 +822,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 4. Status Badge */}
-                            <td className="py-2 px-1 text-center">
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-1 text-center">
                               <motion.div
                                 key={`rd-status-${receivingDelayedPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, scale: 0.8 }}
@@ -841,7 +844,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 5. Processed Rows */}
-                            <td className="py-2.5 px-1.5 font-mono font-black text-right text-emerald-600 dark:text-emerald-400 text-xs truncate">
+                            <td className="py-2 px-1 sm:py-2.5 sm:px-1.5 font-mono font-black text-right text-emerald-600 dark:text-emerald-400 text-xs truncate">
                               <motion.div
                                 key={`rd-rows-${receivingDelayedPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -854,7 +857,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 6. Ingestion Trend Sparkline */}
-                            <td className="py-2 px-1 text-center align-middle">
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-1 text-center align-middle">
                               <motion.div
                                 key={`rd-trend-${receivingDelayedPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, scaleY: 0.2 }}
@@ -887,9 +890,9 @@ export const LivePage: React.FC = () => {
           </div>
 
           {/* ======================================================================= */}
-          {/* COLUMN 2: HOSPITALS CRITICAL ONLY (lg: 6 cols, xl: 5 cols - SEPARATE) */}
+          {/* COLUMN 2: HOSPITALS CRITICAL ONLY (md/lg/xl: 5 cols - SEPARATE)          */}
           {/* ======================================================================= */}
-          <div className="lg:col-span-6 xl:col-span-5 flex flex-col">
+          <div className="col-span-1 md:col-span-5 flex flex-col">
             <Card className="p-0 overflow-hidden border-2 border-slate-200/90 dark:border-slate-800 shadow-xl flex flex-col bg-white dark:bg-slate-900 rounded-2xl">
               {/* Header */}
               <div className="p-3 border-b-2 border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 flex items-center justify-between gap-2 flex-wrap">
@@ -965,12 +968,12 @@ export const LivePage: React.FC = () => {
               <div className="w-full overflow-hidden">
                 <table className="w-full table-fixed text-left border-collapse font-sans">
                   <thead>
-                    <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
-                      <th className="py-2.5 px-2 w-[18%]">HCcode</th>
-                      <th className="py-2.5 px-2 w-[32%]">Name</th>
-                      <th className="py-2.5 px-2 w-[22%]">Last Recv</th>
-                      <th className="py-2.5 px-2 w-[15%] text-right">Delay</th>
-                      <th className="py-2.5 px-1.5 w-[13%] text-center">Status</th>
+                    <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
+                      <th className="py-2 px-1.5 sm:py-2.5 sm:px-2 w-[18%]">HCcode</th>
+                      <th className="py-2 px-1.5 sm:py-2.5 sm:px-2 w-[32%]">Name</th>
+                      <th className="py-2 px-1.5 sm:py-2.5 sm:px-2 w-[22%]">Last Recv</th>
+                      <th className="py-2 px-1.5 sm:py-2.5 sm:px-2 w-[15%] text-right">Delay</th>
+                      <th className="py-2 px-1 sm:py-2.5 sm:px-1.5 w-[13%] text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-xs">
@@ -990,7 +993,7 @@ export const LivePage: React.FC = () => {
                             style={{ perspective: 1000 }}
                           >
                             {/* 1. HCcode */}
-                            <td className="py-2.5 px-2 font-mono font-black text-xs text-slate-900 dark:text-white truncate">
+                            <td className="py-2 px-1.5 sm:py-2.5 sm:px-2 font-mono font-black text-xs text-slate-900 dark:text-white truncate">
                               <motion.div
                                 key={`crit-code-${criticalPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -1003,7 +1006,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 2. Hospital Name */}
-                            <td className="py-2.5 px-2 font-black text-slate-900 dark:text-white text-xs">
+                            <td className="py-2 px-1.5 sm:py-2.5 sm:px-2 font-black text-slate-900 dark:text-white text-xs">
                               <motion.div
                                 key={`crit-name-${criticalPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -1022,7 +1025,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 3. Last Received */}
-                            <td className="py-2.5 px-2 font-mono text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                            <td className="py-2 px-1.5 sm:py-2.5 sm:px-2 font-mono text-[10px] sm:text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
                               <motion.div
                                 key={`crit-ts-${criticalPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -1035,7 +1038,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 4. Delay */}
-                            <td className={`py-2.5 px-2 font-mono font-black text-right text-xs truncate ${status.textColor}`}>
+                            <td className={`py-2 px-1.5 sm:py-2.5 sm:px-2 font-mono font-black text-right text-xs truncate ${status.textColor}`}>
                               <motion.div
                                 key={`crit-delay-${criticalPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -1048,7 +1051,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 5. Status Badge */}
-                            <td className="py-2 px-1 text-center">
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-1.5 text-center">
                               <motion.div
                                 key={`crit-status-${criticalPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, scale: 0.8 }}
@@ -1099,11 +1102,11 @@ export const LivePage: React.FC = () => {
           </div>
 
           {/* ========================================================================= */}
-          {/* COLUMN 3: AWS COST KPI CARDS (lg: 12 cols, xl: 2 cols - COMPACT SIZED)   */}
+          {/* COLUMN 3: AWS COST KPI CARDS (md/lg/xl: 2 cols - COMPACT SIZED)           */}
           {/* ========================================================================= */}
-          <div className="lg:col-span-12 xl:col-span-2 flex flex-col gap-2.5">
+          <div className="col-span-1 md:col-span-2 flex flex-col gap-2">
             {/* Column Header: AWS COST */}
-            <div className="p-3 rounded-2xl border-2 border-slate-200/90 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 shadow-sm flex items-center justify-between gap-2">
+            <div className="p-2.5 sm:p-3 rounded-2xl border-2 border-slate-200/90 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 shadow-sm flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="flex h-2.5 w-2.5 relative shrink-0">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
@@ -1119,13 +1122,13 @@ export const LivePage: React.FC = () => {
             </div>
 
             {/* KPI 1: Hourly Burn (Estimate) */}
-            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-sm flex flex-col justify-between">
+            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-2.5 sm:p-3 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5">
                 <span className="truncate">HOURLY BURN</span>
                 <Zap className="w-3.5 h-3.5 text-blue-500 shrink-0" />
               </div>
               <div className="flex items-baseline gap-1 my-0.5">
-                <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                <span className="text-xl xl:text-2xl font-black text-slate-900 dark:text-white font-mono">
                   ${hourlyRate.toFixed(2)}
                 </span>
                 <span className="text-[10px] font-bold text-slate-400">/hr</span>
@@ -1136,13 +1139,13 @@ export const LivePage: React.FC = () => {
             </div>
 
             {/* KPI 2: Yesterday's Spend */}
-            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-sm flex flex-col justify-between">
+            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-2.5 sm:p-3 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5">
                 <span className="truncate">YESTERDAY</span>
                 <Zap className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
               </div>
               <div className="flex items-baseline gap-1 my-0.5">
-                <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                <span className="text-xl xl:text-2xl font-black text-slate-900 dark:text-white font-mono">
                   ${yesterdayCost.toFixed(2)}
                 </span>
               </div>
@@ -1152,7 +1155,7 @@ export const LivePage: React.FC = () => {
             </div>
 
             {/* KPI 3: Month-to-Date */}
-            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-sm flex flex-col justify-between">
+            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-2.5 sm:p-3 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5">
                 <span className="truncate">MTD SPEND</span>
                 <button
@@ -1164,7 +1167,7 @@ export const LivePage: React.FC = () => {
                 </button>
               </div>
               <div className="flex items-baseline gap-1 my-0.5">
-                <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                <span className="text-xl xl:text-2xl font-black text-slate-900 dark:text-white font-mono">
                   ${mtdCost.toFixed(2)}
                 </span>
               </div>
@@ -1197,13 +1200,13 @@ export const LivePage: React.FC = () => {
             </div>
 
             {/* KPI 4: Forecast */}
-            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-sm flex flex-col justify-between">
+            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-2.5 sm:p-3 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5">
                 <span className="truncate">FORECAST</span>
                 <TrendingUp className={`w-3.5 h-3.5 shrink-0 ${forecastCost > effectiveBudget ? 'text-rose-500' : 'text-purple-500'}`} />
               </div>
               <div className="flex items-baseline gap-1 my-0.5">
-                <span className={`text-xl sm:text-2xl font-black font-mono ${forecastCost > effectiveBudget ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
+                <span className={`text-xl xl:text-2xl font-black font-mono ${forecastCost > effectiveBudget ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
                   ${forecastCost.toFixed(2)}
                 </span>
               </div>
