@@ -121,13 +121,15 @@ export const EmergencyAlertModal: React.FC<EmergencyAlertModalProps> = ({
         localStorage.setItem('ibhar_acknowledged_emergency_alerts', JSON.stringify(Array.from(updated)));
       } catch {}
 
-      // Persist global server-side acknowledgment across all browsers/TVs
+      // Persist global server-side acknowledgment across all browsers/TVs.
+      // The monitoring provider (onAcknowledgeAlert) saves it together with the
+      // alert details; fall back to a direct call if no handler is wired.
       if (!activeAlert.id.startsWith('test-emergency-')) {
-        apiService.acknowledgeAlert(activeAlert.id, activeAlert.hospitalId);
-      }
-
-      if (onAcknowledgeAlert) {
-        onAcknowledgeAlert(activeAlert.id);
+        if (onAcknowledgeAlert) {
+          onAcknowledgeAlert(activeAlert.id);
+        } else {
+          apiService.acknowledgeAlert(activeAlert.id, activeAlert.hospitalId, activeAlert);
+        }
       }
     }
     setActiveAlert(null);

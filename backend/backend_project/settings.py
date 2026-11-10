@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     # Local apps
     'hospitals',
     'aws_costs',
+    'alert_store',
 ]
 
 MIDDLEWARE = [
@@ -76,8 +77,22 @@ WSGI_APPLICATION = 'backend_project.wsgi.application'
 
 
 # Database
+from urllib.parse import urlparse, unquote
+
+# DATABASE_URL (e.g. postgresql://user:pass@host:5432/postgres) takes priority.
+# Special characters in the password must be URL-encoded (@ -> %40, # -> %23).
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+_db_url = urlparse(DATABASE_URL) if DATABASE_URL else None
+
+# The main app DB is chosen by DB_ENGINE exactly as before (SQLite by default).
+# DATABASE_URL only configures the separate Supabase "alerts" database below.
 DB_ENGINE = os.getenv('DB_ENGINE', 'sqlite')
 IS_TESTING = 'test' in sys.argv
+
+# Supabase API settings (backend-only; the service role key bypasses RLS and
+# must never be exposed to the frontend or committed to git).
+SUPABASE_URL = os.getenv('SUPABASE_URL', '')
+SUPABASE_SERVICE_ROLE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '')
 
 if DB_ENGINE == 'postgresql' and not IS_TESTING:
     DATABASES = {
@@ -97,6 +112,22 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
+
+# Supabase (PostgreSQL) database that holds ONLY the alert_store tables
+# (live_alerts). Routed by alert_store.routers.AlertStoreRouter. If DATABASE_URL
+# is not set, alerts fall back to the default database.
+if _db_url and not IS_TESTING:
+    DATABASES['alerts'] = {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': _db_url.path.lstrip('/') or 'postgres',
+        'USER': unquote(_db_url.username or 'postgres'),
+        'PASSWORD': unquote(_db_url.password or ''),
+        'HOST': _db_url.hostname or 'localhost',
+        'PORT': str(_db_url.port or 5432),
+        'OPTIONS': {'sslmode': os.getenv('DB_SSLMODE', 'require')},
+    }
+
+DATABASE_ROUTERS = ['alert_store.routers.AlertStoreRouter']
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

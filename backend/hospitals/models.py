@@ -271,5 +271,3 @@ class AlertAcknowledgment(models.Model):
 
     def __str__(self):
         return f"Acknowledgment for {self.alert_id} at {self.acknowledged_at}"
-
-

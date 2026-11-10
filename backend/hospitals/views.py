@@ -1,4 +1,5 @@
 import datetime
+import logging
 from django.db import connection
 from django.db.models import Q, Count, Avg, Sum
 from django.utils import timezone
@@ -7,7 +8,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 
-from .models import Hospital, Encounter, Discharge, DataIngestionLog, Alert, AlertAcknowledgment
+from alert_store.models import LiveAlert
+from .live_sync_service import parse_sync_timestamp
+from .models import Hospital, Encounter, Discharge, DataIngestionLog, Alert
 from .serializers import (
     HospitalSerializer,
     EncounterSerializer,
@@ -18,6 +21,7 @@ from .serializers import (
 from .services import calculate_hospital_status, get_hospital_summary, make_aware_if_needed
 from . import report_services
 
+logger = logging.getLogger(__name__)
 
 
 def paginate_queryset(queryset, request, default_size=20):
@@ -496,9 +500,17 @@ class AlertAcknowledgeView(APIView):
     """
     @extend_schema(summary="Get acknowledged alert IDs")
     def get(self, request):
-        cutoff = timezone.now() - datetime.timedelta(days=20)
-        AlertAcknowledgment.objects.filter(acknowledged_at__lt=cutoff).delete()
-        ack_ids = list(AlertAcknowledgment.objects.values_list('alert_id', flat=True))
+        try:
+            LiveAlert.purge_expired()
+            ack_ids = list(
+                LiveAlert.objects.filter(is_acknowledged=True).values_list('alert_key', flat=True)
+            )
+        except Exception:
+            logger.exception("Could not read acknowledged alerts from the alerts database")
+            return Response({
+                "success": False,
+                "error": {"code": "ALERT_STORE_UNAVAILABLE", "message": "Alert store is unavailable."}
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response({
             "success": True,
             "acknowledged_ids": ack_ids
@@ -506,34 +518,75 @@ class AlertAcknowledgeView(APIView):
 
     @extend_schema(summary="Acknowledge alerts globally")
     def post(self, request):
-        cutoff = timezone.now() - datetime.timedelta(days=20)
-        AlertAcknowledgment.objects.filter(acknowledged_at__lt=cutoff).delete()
-
+        """
+        Body (all optional, combinable):
+          alert_id / alert_ids: IDs to acknowledge.
+          hospital_code:        applied to alert_id when no details are given.
+          alerts:               [{id, hospital_code, hospital_name, severity, title,
+                                  message, category, time, insert_sql, update_sql,
+                                  general_sql}] - stored so the alert detail is kept
+                                  for 20 days.
+        """
         alert_id = request.data.get('alert_id')
         alert_ids = request.data.get('alert_ids', [])
-        hospital_code = request.data.get('hospital_code', '')
+        hospital_code = request.data.get('hospital_code') or ''
+        details = request.data.get('alerts', [])
 
-        ids_to_ack = []
+        # id -> details dict (may be empty)
+        to_ack = {}
         if alert_id:
-            ids_to_ack.append(str(alert_id).strip())
+            to_ack[str(alert_id).strip()] = {'hospital_code': hospital_code}
         if isinstance(alert_ids, list):
             for i in alert_ids:
                 if i:
-                    ids_to_ack.append(str(i).strip())
+                    to_ack.setdefault(str(i).strip(), {})
+        if isinstance(details, list):
+            for d in details:
+                if isinstance(d, dict) and d.get('id'):
+                    to_ack[str(d['id']).strip()] = d
 
-        for aid in set(ids_to_ack):
-            AlertAcknowledgment.objects.get_or_create(
-                alert_id=aid,
-                defaults={'hospital_code': hospital_code}
-            )
-            try:
-                Alert.objects.filter(pk=aid).update(status='ACKNOWLEDGED')
-            except Exception:
-                pass
+        try:
+            LiveAlert.purge_expired()
+            now = timezone.now()
+            for aid, d in to_ack.items():
+                if not aid:
+                    continue
+                severity = str(d.get('severity') or 'CRITICAL').upper()
+                if severity not in ('INFO', 'WARNING', 'CRITICAL'):
+                    severity = 'CRITICAL'
+                obj, _created = LiveAlert.objects.get_or_create(
+                    alert_key=aid[:255],
+                    defaults={
+                        'hospital_code': str(d.get('hospital_code') or '')[:50],
+                        'hospital_name': str(d.get('hospital_name') or '')[:255],
+                        'severity': severity,
+                        'title': str(d.get('title') or '')[:255],
+                        'message': str(d.get('message') or ''),
+                        'category': str(d.get('category') or '')[:100],
+                        'error_time': parse_sync_timestamp(d.get('time')),
+                        'insert_sql': d.get('insert_sql') or None,
+                        'update_sql': d.get('update_sql') or None,
+                        'general_sql': d.get('general_sql') or None,
+                    },
+                )
+                if not obj.is_acknowledged:
+                    obj.is_acknowledged = True
+                    obj.acknowledged_at = now
+                    obj.save(update_fields=['is_acknowledged', 'acknowledged_at', 'last_seen_at'])
+
+                # Backend-generated DB alerts use numeric primary keys.
+                if aid.isdigit():
+                    Alert.objects.filter(pk=int(aid)).update(status='ACKNOWLEDGED')
+        except Exception:
+            logger.exception("Could not save alert acknowledgment to the alerts database")
+            return Response({
+                "success": False,
+                "error": {"code": "ALERT_STORE_UNAVAILABLE", "message": "Could not save acknowledgment."}
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         return Response({
             "success": True,
-            "acknowledged_count": len(ids_to_ack)
+            "acknowledged_count": len(to_ack)
         }, status=status.HTTP_200_OK)
 
 

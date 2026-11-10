@@ -385,8 +385,8 @@ export const MonitoringProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const BASELINE_ACK_TIMESTAMP = new Date('2026-11-04T12:05:00Z').getTime();
 
       if (liveRes && liveRes.hospitals) {
-        liveRes.hospitals.forEach((h, hIdx) => {
-          (h.latest_errors || []).forEach((err, errIdx) => {
+        liveRes.hospitals.forEach((h) => {
+          (h.latest_errors || []).forEach((err) => {
             const rawTime = err.time;
             let parsedTime: Date | null = null;
             if (rawTime) {
@@ -400,7 +400,15 @@ export const MonitoringProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               }
             }
 
-            const alertId = `live-alert-${h.hospital_code}-${hIdx}-${errIdx}`;
+            // Stable, content-based ID (NOT list position): the backend returns errors
+            // newest-first, so index-based IDs shift whenever a new error arrives and
+            // previously acknowledged alerts would pop up again on other screens.
+            const stableKey = [h.hospital_code, err.data_structure, err.time, err.error_text].join('|');
+            let hash = 0;
+            for (let i = 0; i < stableKey.length; i++) {
+              hash = (Math.imul(31, hash) + stableKey.charCodeAt(i)) | 0;
+            }
+            const alertId = `live-alert-${h.hospital_code}-${(hash >>> 0).toString(36)}`;
             const timeMs = parsedTime && !isNaN(parsedTime.getTime()) ? parsedTime.getTime() : 0;
             // Existing alerts on or before the baseline deployment are marked acknowledged
             const isPreExisting = timeMs > 0 && timeMs <= BASELINE_ACK_TIMESTAMP;
@@ -561,8 +569,12 @@ export const MonitoringProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const markAlertAsRead = async (alertId: string) => {
     setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, isRead: true, status: 'ACKNOWLEDGED' } : a));
-    // Persist global server-side acknowledgment across all browsers/TVs
-    await apiService.acknowledgeAlert(alertId);
+    // Persist global server-side acknowledgment (with alert details) across all browsers/TVs
+    const target = alerts.find(a => a.id === alertId);
+    const saved = await apiService.acknowledgeAlert(alertId, target?.hospitalId, target);
+    if (!saved) {
+      console.error(`[Monitoring] Could not save acknowledgment for ${alertId} on the server; other screens may show it again.`);
+    }
     if (!alertId.startsWith('live-alert-')) {
       await apiService.markAlertAsRead(alertId);
     }

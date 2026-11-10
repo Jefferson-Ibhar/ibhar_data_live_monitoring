@@ -176,12 +176,26 @@ export const apiService = {
     return [];
   },
 
-  async acknowledgeAlert(alertId: string, hospitalCode?: string): Promise<boolean> {
+  async acknowledgeAlert(alertId: string, hospitalCode?: string, alert?: Alert): Promise<boolean> {
+    // Sending the alert details lets the backend keep them for 20 days.
+    const details = alert ? [{
+      id: alertId,
+      hospital_code: alert.hospitalId || hospitalCode,
+      hospital_name: alert.hospitalName,
+      severity: alert.severity,
+      title: alert.title,
+      message: alert.message,
+      category: alert.category,
+      time: alert.timestamp,
+      insert_sql: alert.insert_sql,
+      update_sql: alert.update_sql,
+      general_sql: alert.general_sql,
+    }] : undefined;
     const res = await fetchFromBackend<any>('/alerts/acknowledge/', {
       method: 'POST',
-      body: JSON.stringify({ alert_id: alertId, hospital_code: hospitalCode })
+      body: JSON.stringify({ alert_id: alertId, hospital_code: hospitalCode, alerts: details })
     });
-    return res && res.success !== false;
+    return Boolean(res && res.success !== false);
   },
 
   async acknowledgeMultipleAlerts(alertIds: string[]): Promise<boolean> {
