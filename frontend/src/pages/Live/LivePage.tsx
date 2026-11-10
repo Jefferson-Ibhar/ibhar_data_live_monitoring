@@ -755,12 +755,12 @@ export const LivePage: React.FC = () => {
                 <table className="w-full table-fixed text-left border-collapse font-sans">
                   <thead>
                     <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
-                      <th className="py-2.5 px-2 w-[18%]">HCcode</th>
-                      <th className="py-2.5 px-2 w-[28%]">Name</th>
-                      <th className="py-2.5 px-2 w-[18%]">Last Recv</th>
-                      <th className="py-2.5 px-1.5 w-[14%] text-center">Status</th>
-                      <th className="py-2.5 px-1.5 w-[11%] text-right">Rows</th>
-                      <th className="py-2.5 px-1.5 w-[11%] text-center">Trend</th>
+                      <th className="py-2.5 px-2 w-[16%]">HCcode</th>
+                      <th className="py-2.5 px-2 w-[24%]">Name</th>
+                      <th className="py-2.5 pl-2 pr-3 w-[24%]">Last Recv</th>
+                      <th className="py-2.5 pl-3 pr-2 w-[16%] text-center">Status</th>
+                      <th className="py-2.5 px-1.5 w-[10%] text-right">Rows</th>
+                      <th className="py-2.5 px-1.5 w-[10%] text-center">Trend</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-xs">
@@ -816,7 +816,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 3. Last Received */}
-                            <td className="py-2.5 px-2 font-mono text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                            <td className="py-2.5 pl-2 pr-3 font-mono text-[10.5px] sm:text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
                               <motion.div
                                 key={`rd-ts-${receivingDelayedPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -829,7 +829,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 4. Status Badge */}
-                            <td className="py-2 px-1 text-center">
+                            <td className="py-2 pl-3 pr-2 text-center">
                               <motion.div
                                 key={`rd-status-${receivingDelayedPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, scale: 0.8 }}
@@ -976,11 +976,11 @@ export const LivePage: React.FC = () => {
                 <table className="w-full table-fixed text-left border-collapse font-sans">
                   <thead>
                     <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
-                      <th className="py-2.5 px-2 w-[18%]">HCcode</th>
-                      <th className="py-2.5 px-2 w-[32%]">Name</th>
-                      <th className="py-2.5 px-2 w-[22%]">Last Recv</th>
+                      <th className="py-2.5 px-2 w-[16%]">HCcode</th>
+                      <th className="py-2.5 px-2 w-[30%]">Name</th>
+                      <th className="py-2.5 pl-2 pr-3 w-[24%]">Last Recv</th>
                       <th className="py-2.5 px-2 w-[15%] text-right">Delay</th>
-                      <th className="py-2.5 px-1.5 w-[13%] text-center">Status</th>
+                      <th className="py-2.5 pl-2 pr-1.5 w-[15%] text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-xs">
@@ -1032,7 +1032,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 3. Last Received */}
-                            <td className="py-2.5 px-2 font-mono text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                            <td className="py-2.5 pl-2 pr-3 font-mono text-[10.5px] sm:text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
                               <motion.div
                                 key={`crit-ts-${criticalPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -1058,7 +1058,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 5. Status Badge */}
-                            <td className="py-2 px-1 text-center">
+                            <td className="py-2 pl-2 pr-1 text-center">
                               <motion.div
                                 key={`crit-status-${criticalPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, scale: 0.8 }}
