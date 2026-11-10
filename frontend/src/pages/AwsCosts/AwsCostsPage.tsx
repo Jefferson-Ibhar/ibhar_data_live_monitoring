@@ -304,6 +304,9 @@ export const AwsCostsPage: React.FC = () => {
   const healthStatus = (summary?.integration_health || 'healthy').toLowerCase();
   const effectiveBudget = customBudget || summary?.budget_limit || 2800;
   const mtdCost = Number(summary?.mtd_cost ?? 412.50);
+  // Days elapsed in the current month (e.g. on 10 Nov -> "10 days")
+  const daysElapsedInMonth = new Date().getDate();
+  const mtdDaysLabel = `${daysElapsedInMonth} ${daysElapsedInMonth === 1 ? 'day' : 'days'}`;
   const budgetUsedPercent = Number(((mtdCost / effectiveBudget) * 100).toFixed(1));
   const forecastCost = Number(summary?.forecast_cost ?? 2450.00);
   const hourlyRate = Number(summary?.current_hourly_rate ?? 2.85);
@@ -361,7 +364,13 @@ export const AwsCostsPage: React.FC = () => {
               <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
                 AWS Cost & Telemetry
               </h1>
-              {isMock ? (
+              {!summary ? (
+                // Summary not received yet (loading, or the API could not be reached):
+                // do not claim "mock" - we simply do not know the mode yet.
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700">
+                  CONNECTING…
+                </span>
+              ) : isMock ? (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
                   MOCK DATA MODE
                 </span>
@@ -481,7 +490,7 @@ export const AwsCostsPage: React.FC = () => {
         {/* KPI 3: Month-to-Date */}
         <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs font-extrabold text-slate-500 dark:text-slate-400 mb-2">
-            <span>MONTH-TO-DATE</span>
+            <span>MONTH-TO-DATE · {mtdDaysLabel.toUpperCase()}</span>
             <button
               onClick={() => navigate('/notification-settings')}
               title="Configure Dynamic Monthly Budget in Settings"

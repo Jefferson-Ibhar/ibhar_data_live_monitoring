@@ -31,6 +31,23 @@ import type { IntegrationHealthLog, IntegrationTrendPoint } from '../../types';
 import { apiService } from '../../services/api';
 
 /**
+ * "Last Recv" cell text, e.g. "14:00 (10 Nov)".
+ * The time and the "(date)" are separate no-wrap pieces: on a wide screen they stay on one
+ * line, on a narrow/portrait TV the date wraps below the time instead of overflowing into
+ * the Status badge next to it.
+ */
+const TimestampStack: React.FC<{ value: string }> = ({ value }) => {
+  const split = value.indexOf(' (');
+  if (split === -1) return <>{value}</>;
+  return (
+    <>
+      <span className="whitespace-nowrap">{value.slice(0, split)}</span>{' '}
+      <span className="whitespace-nowrap">{value.slice(split + 1)}</span>
+    </>
+  );
+};
+
+/**
  * Line Graph Sparkline Cell for Ingestion Trend - TV & Display Optimized
  */
 const IngestionSparkline: React.FC<{ points: IntegrationTrendPoint[]; isCritical: boolean }> = ({
@@ -466,6 +483,9 @@ export const LivePage: React.FC = () => {
   // Column 3 AWS Metrics Calculations
   const effectiveBudget = customBudget || awsSummary?.budget_limit || 680;
   const mtdCost = Number(awsSummary?.mtd_cost ?? 48.54);
+  // Days elapsed in the current month (e.g. on 10 Nov -> "10 days")
+  const daysElapsedInMonth = new Date().getDate();
+  const mtdDaysLabel = `${daysElapsedInMonth} ${daysElapsedInMonth === 1 ? 'day' : 'days'}`;
   const budgetUsedPercent = Number(((mtdCost / effectiveBudget) * 100).toFixed(1));
   const forecastCost = Number(awsSummary?.forecast_cost ?? 665.82);
   const hourlyRate = Number(awsSummary?.current_hourly_rate ?? 0.81);
@@ -755,12 +775,12 @@ export const LivePage: React.FC = () => {
                 <table className="w-full table-fixed text-left border-collapse font-sans">
                   <thead>
                     <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
-                      <th className="py-2.5 px-2 w-[16%]">HCcode</th>
-                      <th className="py-2.5 px-2 w-[24%]">Name</th>
-                      <th className="py-2.5 pl-2 pr-3 w-[24%]">Last Recv</th>
-                      <th className="py-2.5 pl-3 pr-2 w-[16%] text-center">Status</th>
-                      <th className="py-2.5 px-1.5 w-[10%] text-right">Rows</th>
-                      <th className="py-2.5 px-1.5 w-[10%] text-center">Trend</th>
+                      <th className="py-2.5 px-2 w-[18%]">HCcode</th>
+                      <th className="py-2.5 px-2 w-[28%]">Name</th>
+                      <th className="py-2.5 px-2 w-[18%]">Last Recv</th>
+                      <th className="py-2.5 px-1.5 w-[14%] text-center">Status</th>
+                      <th className="py-2.5 px-1.5 w-[11%] text-right">Rows</th>
+                      <th className="py-2.5 px-1.5 w-[11%] text-center">Trend</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-xs">
@@ -816,7 +836,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 3. Last Received */}
-                            <td className="py-2.5 pl-2 pr-3 font-mono text-[10.5px] sm:text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                            <td className="py-2.5 px-2 font-mono text-[11px] leading-tight text-slate-700 dark:text-slate-300 font-bold overflow-hidden">
                               <motion.div
                                 key={`rd-ts-${receivingDelayedPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -824,12 +844,12 @@ export const LivePage: React.FC = () => {
                                 transition={{ duration: 0.36, delay: idx * 0.05 }}
                                 style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
                               >
-                                {formatTimestamp(h.received_at || h.start_time)}
+                                <TimestampStack value={formatTimestamp(h.received_at || h.start_time)} />
                               </motion.div>
                             </td>
 
                             {/* 4. Status Badge */}
-                            <td className="py-2 pl-3 pr-2 text-center">
+                            <td className="py-2 px-1 text-center">
                               <motion.div
                                 key={`rd-status-${receivingDelayedPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, scale: 0.8 }}
@@ -976,11 +996,11 @@ export const LivePage: React.FC = () => {
                 <table className="w-full table-fixed text-left border-collapse font-sans">
                   <thead>
                     <tr className="border-b-2 border-slate-200 dark:border-slate-800 text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-100/95 dark:bg-slate-900/95 select-none">
-                      <th className="py-2.5 px-2 w-[16%]">HCcode</th>
-                      <th className="py-2.5 px-2 w-[30%]">Name</th>
-                      <th className="py-2.5 pl-2 pr-3 w-[24%]">Last Recv</th>
+                      <th className="py-2.5 px-2 w-[18%]">HCcode</th>
+                      <th className="py-2.5 px-2 w-[32%]">Name</th>
+                      <th className="py-2.5 px-2 w-[22%]">Last Recv</th>
                       <th className="py-2.5 px-2 w-[15%] text-right">Delay</th>
-                      <th className="py-2.5 pl-2 pr-1.5 w-[15%] text-center">Status</th>
+                      <th className="py-2.5 px-1.5 w-[13%] text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-xs">
@@ -1032,7 +1052,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 3. Last Received */}
-                            <td className="py-2.5 pl-2 pr-3 font-mono text-[10.5px] sm:text-[11px] text-slate-700 dark:text-slate-300 font-bold whitespace-nowrap">
+                            <td className="py-2.5 px-2 font-mono text-[11px] leading-tight text-slate-700 dark:text-slate-300 font-bold overflow-hidden">
                               <motion.div
                                 key={`crit-ts-${criticalPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, rotateX: -90, y: -4 }}
@@ -1040,7 +1060,7 @@ export const LivePage: React.FC = () => {
                                 transition={{ duration: 0.36, delay: idx * 0.05 }}
                                 style={{ transformOrigin: 'top center', transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
                               >
-                                {formatTimestamp(h.received_at || h.start_time)}
+                                <TimestampStack value={formatTimestamp(h.received_at || h.start_time)} />
                               </motion.div>
                             </td>
 
@@ -1058,7 +1078,7 @@ export const LivePage: React.FC = () => {
                             </td>
 
                             {/* 5. Status Badge */}
-                            <td className="py-2 pl-2 pr-1 text-center">
+                            <td className="py-2 px-1 text-center">
                               <motion.div
                                 key={`crit-status-${criticalPage}-${h.hospital_id}`}
                                 initial={{ opacity: 0, scale: 0.8 }}
@@ -1164,7 +1184,9 @@ export const LivePage: React.FC = () => {
             {/* KPI 3: Month-to-Date */}
             <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-xl p-2.5 sm:p-3 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5">
-                <span className="truncate">MTD SPEND</span>
+                <span className="truncate">
+                  MTD SPEND · <span className="text-yellow-300">{mtdDaysLabel}</span>
+                </span>
                 <button
                   onClick={() => navigate('/notification-settings')}
                   title="Configure Dynamic Monthly Budget in Settings"
