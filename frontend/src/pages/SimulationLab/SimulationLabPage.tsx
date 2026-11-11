@@ -745,7 +745,7 @@ export const SimulationLabPage: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+                <div data-lenis-prevent className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
                   {hospitals.filter(h => h.id.startsWith('HOSP')).length === 0 ? (
                     <div className="p-8 text-center text-xs text-textLight-secondary dark:text-textNight-secondary italic">
                       No new sequential hospitals registered yet. Go to "Excel Upload" to import them.

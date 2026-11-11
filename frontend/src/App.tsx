@@ -4,6 +4,7 @@ import { ThemeProvider } from './hooks/useTheme';
 import { MonitoringProvider } from './hooks/useMonitoring';
 
 // Layout
+import { SmoothScroll } from './components/layout/SmoothScroll';
 import { MainLayout } from './components/layout/MainLayout';
 
 // Pages
@@ -32,6 +33,7 @@ export const App: React.FC = () => {
     <ThemeProvider>
       <MonitoringProvider>
         <BrowserRouter>
+          <SmoothScroll>
           <Routes>
             {/* Auth Page */}
             <Route path="/login" element={<LoginPage />} />
@@ -63,6 +65,7 @@ export const App: React.FC = () => {
             {/* Fallback Route */}
             <Route path="*" element={<DashboardPage />} />
           </Routes>
+          </SmoothScroll>
         </BrowserRouter>
       </MonitoringProvider>
     </ThemeProvider>

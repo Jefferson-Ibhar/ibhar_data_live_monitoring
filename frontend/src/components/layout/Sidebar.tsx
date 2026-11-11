@@ -81,7 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isExpanded, setIsExpanded }) =
       </div>
 
       {/* Navigation List - Smooth scrollable without visible scrollbar */}
-      <nav className="flex-1 space-y-2 overflow-y-auto overflow-x-hidden py-1 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      <nav data-lenis-prevent className="flex-1 space-y-2 overflow-y-auto overflow-x-hidden py-1 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (

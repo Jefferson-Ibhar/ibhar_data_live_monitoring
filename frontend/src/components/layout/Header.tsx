@@ -149,7 +149,7 @@ export const Header: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="space-y-3.5 max-h-64 overflow-y-auto pr-1">
+                  <div data-lenis-prevent className="space-y-3.5 max-h-64 overflow-y-auto pr-1">
                     {alerts.slice(0, 4).map((alert) => (
                       <Link
                         key={alert.id}
